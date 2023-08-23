@@ -405,6 +405,7 @@ left join
 			ft1.mcid = ua1.mcid 
 			and 
 			ft1."UFDM ARR Dates in +/- 6 Month Range: with ARR" = ua1.date_ufdm_arr
+--Filter on Dates
 where 
 	ft1."UFDM ARR Dates in +/- 6 Month Range: with ARR" is not null 
 )

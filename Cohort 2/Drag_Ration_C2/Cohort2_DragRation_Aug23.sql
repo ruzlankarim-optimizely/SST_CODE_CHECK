@@ -1,5 +1,6 @@
 --Code for Drag Ration 
-
+DROP TABLE IF EXISTS sandbox.cohort2_drag_ration;
+CREATE TABLE sandbox.cohort2_drag_ration AS (
 with tat_info as 
 (
 select 
@@ -254,6 +255,7 @@ select
     *
 from 
     combined_table_4
+);
     
 --Test to see if Ratios Add up to More than 1
 --where 

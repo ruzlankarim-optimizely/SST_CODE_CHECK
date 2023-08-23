@@ -1,3 +1,6 @@
+
+DROP TABLE IF EXISTS sandbox.cohort2_tat_v1;
+CREATE TABLE sandbox.cohort2_tat_v1 AS (
 with edit_tat as 
 (
 select 
@@ -347,7 +350,7 @@ select
 	*
 from 
 	new_prod_tat
-
+);
 
 	
 	

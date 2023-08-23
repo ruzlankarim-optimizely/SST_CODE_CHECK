@@ -387,7 +387,7 @@ where
 )
 
 --Joining to to UFDM ARR with PF Makeup and Ratio. 
-, final_table_2 as 
+, final_table_2  as 
 (
 select 
 	ft1.mcid,

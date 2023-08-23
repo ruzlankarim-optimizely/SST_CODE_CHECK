@@ -3,8 +3,7 @@
 --Customers who fully churn don't have a transition date anyways 
 
 --Create a cartesian join 
-DROP TABLE IF EXISTS sandbox.cohort2_drag_ratio;
-CREATE TABLE sandbox.cohort2_drag_ratio AS (
+
 with cartersian_table as 
 	(
 	select 
@@ -387,7 +386,7 @@ where
 )
 
 --Joining to to UFDM ARR with PF Makeup and Ratio. 
-, final_table_2  as 
+, final_table_2 as 
 (
 select 
 	ft1.mcid,
@@ -405,7 +404,6 @@ left join
 			ft1.mcid = ua1.mcid 
 			and 
 			ft1."UFDM ARR Dates in +/- 6 Month Range: with ARR" = ua1.date_ufdm_arr
---Filter on Dates
 where 
 	ft1."UFDM ARR Dates in +/- 6 Month Range: with ARR" is not null 
 )
@@ -446,19 +444,15 @@ from
 select 
 	*
 from 
-	test_1
-);
-
-
-
--- where 
--- 	sum_of_ratios > 1.1
+	test_1 
+where 
+	sum_of_ratios > 1.1
 	
--- where 
--- 	mcid = '0f944d75-a26a-e611-80e5-c4346bad92d0'
+where 
+	mcid = '0f944d75-a26a-e611-80e5-c4346bad92d0'
 			
 
--- --Test: Make sure they don't have duplicates 
+--Test: Make sure they don't have duplicates 
 
 --select 
 --	distinct mcid, 

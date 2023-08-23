@@ -3,7 +3,8 @@
 --Customers who fully churn don't have a transition date anyways 
 
 --Create a cartesian join 
-
+DROP TABLE IF EXISTS sandbox.cohort2_drag_ratio;
+CREATE TABLE sandbox.cohort2_drag_ratio AS (
 with cartersian_table as 
 	(
 	select 
@@ -203,7 +204,7 @@ select
 	sum(arr_usd_ccfx) over(partition by mcid, snapshot_date, product_family)/nullif(sum(arr_usd_ccfx) over(partition by mcid, snapshot_date),0) as "Ratio to Each PF", 
 	sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_ufdm_arr 
 from 
-	ufdm.arr
+	sandbox_pd.arr
 where 
 	product_family not in ('Full Stack', 'Web', 'Recurring: Cloud: Intelligence Cloud: Web Experimentation and Personalization')
 )
@@ -442,15 +443,19 @@ from
 select 
 	*
 from 
-	test_1 
-where 
-	sum_of_ratios > 1.1
+	test_1
+);
+
+
+
+-- where 
+-- 	sum_of_ratios > 1.1
 	
-where 
-	mcid = '0f944d75-a26a-e611-80e5-c4346bad92d0'
+-- where 
+-- 	mcid = '0f944d75-a26a-e611-80e5-c4346bad92d0'
 			
 
---Test: Make sure they don't have duplicates 
+-- --Test: Make sure they don't have duplicates 
 
 --select 
 --	distinct mcid, 

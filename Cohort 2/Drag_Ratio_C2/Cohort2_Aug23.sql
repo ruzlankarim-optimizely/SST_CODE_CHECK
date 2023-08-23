@@ -414,7 +414,7 @@ where
 --Produce a final table for the DEs with mcid, Date in UFDM ARR, Start of Data in TAT, Product Family Makeup and Ratio 
 --This is the drag ratio table
 
-,	 drag_ratio_c2 as 
+,	 drag_ratio_c2 as --test
 (
 select 
 	ft2.mcid, 

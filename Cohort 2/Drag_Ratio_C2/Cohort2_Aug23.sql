@@ -155,7 +155,7 @@ select
 	arr, 
 	min(snapshot_date) filter(where arr > 0) over(partition by mcid) as "Start of SST Data from UFDM"
 from 
-	sandbox.control_sst_before_manual_changes
+	ufdm.sst
 where 
 	record_source in ('ufdm_2022') 
 and 

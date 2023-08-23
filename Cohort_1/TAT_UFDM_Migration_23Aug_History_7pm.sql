@@ -6,7 +6,7 @@ select
 from 
 --	ufdm.sst
 --I use sst backup which has the record sources without sensitivity analysis or manual changes 
-	sandbox.control_sst_before_manual_changes
+	ufdm.sst
 where 
 	record_source = 'sst_tat'
 )
@@ -144,7 +144,7 @@ select
 	end as product_family_tat 
 from 
 --I use sst backup which has the record sources without sensitivity analysis or manual changes 
-	sandbox.control_sst_before_manual_changes
+	ufdm.sst
 where 
 	record_source = 'sst_tat'
 and 
@@ -171,7 +171,7 @@ and
 --select 
 --	*
 --from 
---	sandbox.control_sst_before_manual_changes
+--	ufdm.sst
 --where 
 --	record_source = 'sst_tat'
 --and

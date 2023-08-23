@@ -70,7 +70,7 @@ select
 from 
     tat_info t1
 inner join 
-	sandbox.cohort2_dtag_ratio dr 
+	sandbox.cohort2_drag_ratio  dr 
         on 
             t1.mcid = dr.mcid
 )

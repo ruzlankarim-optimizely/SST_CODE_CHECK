@@ -1,3 +1,4 @@
+--Code for Drag Ration 
 
 with tat_info as 
 (
@@ -62,26 +63,17 @@ select
 	t1.is_deleted,
 	t1.modified_comments, 
     dr."MAX Snapshot Date of TAT", 
-    dr.product_family_arr,
-    dr."Ratio of ARR Allocated to PF UFDM ARR" as "Original Ratio",
-    dr."Date to Drag to Under Scenario 1",
-    dr."Date to Drag Under Scenario 2",
-    dr."Product Family Transition", 
-    row_number() over(partition by mcid, t1.snapshot_date, product_family_arr order by mcid) as "Row Number of PF"
+    dr.product_family_arr, 
+    dr."Ratio of ARR" as "Original Ratio",
+    dr."Date to Drag" as "Date to Drag to Under Scenario 1",
+    row_number() over(partition by t1.mcid, t1.snapshot_date, dr.product_family_arr order by t1.mcid) as "Row Number of PF"
 from 
     tat_info t1
 inner join 
-    sandbox.drag_ratio dr 
+	sandbox.unified_drag_ratio dr 
         on 
-            t1.mcid = dr.mcid_arr
+            t1.mcid = dr.mcid_arr 
 )
-
---select 
---	*
---from 
---	combined_table_1 
---where 
---	mcid = '5e479b1a-2251-e811-813c-70106fa51d21'
 
 
 ,   combined_table_2 as 
@@ -110,8 +102,6 @@ select
     ct1.product_family_arr,
     ct1."Original Ratio",
     ct1."Date to Drag to Under Scenario 1",
-    ct1."Date to Drag Under Scenario 2",
-    ct1."Product Family Transition", 
     max(ct1."Row Number of PF") over(partition by mcid, ct1.snapshot_date, product_family_arr) as "No of Rows Per PF"
 from 
     combined_table_1 ct1 
@@ -152,20 +142,14 @@ select
     ct1.product_family_arr,
     ct1."Original Ratio",
     ct1."Date to Drag to Under Scenario 1",
-    ct1."Date to Drag Under Scenario 2",
-    ct1."Product Family Transition",
     ct1."No of Rows Per PF"
 from 
 	combined_table_2 ct1
+--Get rid of Campaign in Dec 2021 if it's copied over from UFDM ARR. Campaign does not come from TAT in Dec 2021. Therefore ratios in Dec 2021 should be done without Campaign
 where 
 	not 
 	(date_trunc('month', snapshot_date) = '2021-12-01'::DATE AND product_family_arr ilike 'Recurring: Cloud: Other Bookings: Campaign')
 )
---where 
---	mcid = '5e479b1a-2251-e811-813c-70106fa51d21'
---and 
---	not 
---	(date_trunc('month', snapshot_date) = '2021-12-01'::DATE AND product_family_arr ilike 'Recurring: Cloud: Other Bookings: Campaign')
 
 
 --select 
@@ -173,7 +157,7 @@ where
 --from 
 --	comibined_table_2a
 --where 
---	mcid = '5e479b1a-2251-e811-813c-70106fa51d21'
+--	mcid = '010e7f39-f251-c40b-5395-585a3a3f0723'
 
 , combined_table_3 as 
 (
@@ -201,8 +185,9 @@ select
     ct2.product_family_arr,
     ct2."Original Ratio",
     ct2."Date to Drag to Under Scenario 1",
-    ct2."Date to Drag Under Scenario 2",
-    ct2."Product Family Transition",
+    --Calculate the new ratios 
+    --If it's not Dec 2021, then original ratio divided by number of rows 
+    --If it's Dec 2021, since we got rid of campaign, get ratio of ratios 
     case
     	when date_trunc('MONTH', snapshot_date) != '2021-12-01' then ct2."Original Ratio"/ct2."No of Rows Per PF"
     	when date_trunc('MONTH', snapshot_date)  = '2021-12-01' then ct2."Original Ratio"/(sum(ct2."Original Ratio") over(partition by ct2.mcid, ct2.snapshot_date))
@@ -220,7 +205,7 @@ and
 --from 
 --	combined_table_3 
 --where 
---	mcid = '5e479b1a-2251-e811-813c-70106fa51d21'
+--	mcid = '010e7f39-f251-c40b-5395-585a3a3f0723'
 
 ,   combined_table_4 as 
 (
@@ -248,22 +233,24 @@ select
     ct3.product_family_arr,
     ct3."Original Ratio",
     ct3."Date to Drag to Under Scenario 1",
-    ct3."Date to Drag Under Scenario 2",
-    ct3."Product Family Transition", 
     ct3."New Ratio Per Date for TAT",
     sum(ct3."New Ratio Per Date for TAT") over(partition by ct3.mcid, ct3.snapshot_date) as "Sum of Ratios Per MCID and Snapshot Date"
 from 
     combined_table_3 ct3
 )
 
---Table for Drag Ration
+--Table for Drag Ration: Use this to create drag ration 
 select 
     *
 from 
     combined_table_4
--- where 
--- --	mcid = '5e479b1a-2251-e811-813c-70106fa51d21'
--- 	"Sum of Ratios Per MCID and Snapshot Date" > 1.01
+
+    
+--Test to see if Ratios Add up to More than 1
+--where 
+--	"Sum of Ratios Per MCID and Snapshot Date" > 1.01
+	
+--	
 
 	
 

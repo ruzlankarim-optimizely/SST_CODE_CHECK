@@ -155,7 +155,7 @@ date_trunc('month', snapshot_date) = '2021-12-01'::DATE
 )
 and 
 --Changing for ufdm sst
-	overage_flag = 'N'
+	coalesce(nullif(trim(overage_flag), ''), 'N') IS DISTINCT FROM 'Y'
 )
 
 
@@ -1603,29 +1603,13 @@ where
 
 --Rough Tests 
 
---select 
---	*
---from 
---	drag_ratio 
---where 
---	mcid_arr = '00c43d23-1651-e811-8143-70106fa67261'
-
-
-select 
-	distinct dr.mcid_arr 
-from 
-	drag_ratio dr 
-inner join 
-	sandbox.cohort2_drag_ratio cdr  
-		on 
-			dr.mcid_arr = cdr.mcid
-			
-			
 select 
 	*
 from 
-	sandbox.cohort2_drag_ratio cdr  
-where 
-	mcid = '00c43d23-1651-e811-8143-70106fa67261'
+	drag_ratio 
+
+
+
+
 			
 

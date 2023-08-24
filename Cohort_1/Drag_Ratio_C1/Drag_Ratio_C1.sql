@@ -154,6 +154,7 @@ date_trunc('month', snapshot_date) = '2021-12-01'::DATE
                   AND product_family = 'Recurring: Cloud: Other Bookings: Campaign'
 )
 and 
+--Changed for production sst
 	overage_flag = 'Y'
 )
 

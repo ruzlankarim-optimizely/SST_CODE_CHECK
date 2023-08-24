@@ -155,7 +155,7 @@ select
 	arr, 
 	min(snapshot_date) filter(where arr > 0) over(partition by mcid) as "Start of SST Data from UFDM"
 from 
-	sandbox.control_sst_before_manual_changes
+	ufdm.sst
 where 
 	record_source in ('ufdm_2022') 
 and 
@@ -387,7 +387,7 @@ where
 )
 
 --Joining to to UFDM ARR with PF Makeup and Ratio. 
-, final_table_2 as 
+, final_table_2  as 
 (
 select 
 	ft1.mcid,
@@ -414,7 +414,7 @@ where
 --Produce a final table for the DEs with mcid, Date in UFDM ARR, Start of Data in TAT, Product Family Makeup and Ratio 
 --This is the drag ratio table
 
-,	 drag_ratio_c2 as 
+,	 drag_ratio_c2 as --test
 (
 select 
 	ft2.mcid, 

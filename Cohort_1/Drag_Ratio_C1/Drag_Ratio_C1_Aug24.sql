@@ -155,7 +155,7 @@ date_trunc('month', snapshot_date) = '2021-12-01'::DATE
 )
 and 
 --Changing for ufdm sst
-	overage_flag = 'Y'
+	overage_flag = 'N'
 )
 
 

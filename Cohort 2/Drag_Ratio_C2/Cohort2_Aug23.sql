@@ -204,7 +204,7 @@ select
 	sum(arr_usd_ccfx) over(partition by mcid, snapshot_date, product_family)/nullif(sum(arr_usd_ccfx) over(partition by mcid, snapshot_date),0) as "Ratio to Each PF", 
 	sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_ufdm_arr 
 from 
-	sandbox_pd.arr
+	sandbox.arr_with_unbundling 
 where 
 	product_family not in ('Full Stack', 'Web', 'Recurring: Cloud: Intelligence Cloud: Web Experimentation and Personalization')
 )
@@ -396,6 +396,7 @@ select
 	ft1."Date of Churn", 
 	ft1."UFDM ARR Dates in +/- 6 Month Range: with ARR",
 	ua1.product_family,
+	ua1.date_ufdm_arr, 
 	ua1."Ratio to Each PF"
 from 
 	final_table_1 ft1
@@ -423,6 +424,7 @@ select
 	ft2."Date of Churn" as "Churn Date in TAT", 
 	((ft2."UFDM ARR Dates in +/- 6 Month Range: with ARR"+interval '1 month')-interval '1 day') as "Date in UFDM ARR",
 	ft2.product_family as "Product Family in UFDM ARR", 
+	ft2.date_ufdm_arr as snapshot_date_arr, 
 	ft2."Ratio to Each PF" as "Ratio of ARR for Each PF in UFDM ARR"
 from 
 	final_table_2 ft2

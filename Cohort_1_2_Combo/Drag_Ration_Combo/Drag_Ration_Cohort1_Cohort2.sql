@@ -1,5 +1,6 @@
 --Code for Drag Ration --For combined tables 
-
+Drop table if exists sandbox.combined_drag_ration ;
+create table sandbox.combined_drag_ration as (
 with tat_info as 
 (
 select 
@@ -224,6 +225,9 @@ select
     *
 from 
     drag_ration_unified
+
+
+);
 --where 
 --	"Sum of Ratios Per MCID and Snapshot Date" > 1.01
     

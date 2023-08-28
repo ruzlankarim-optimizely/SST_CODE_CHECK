@@ -1,5 +1,6 @@
 --Generate TAT for Combined Cohort 1 & 2 for the new SST
-
+drop table if exists sandbox.combined_tat ;
+create table sandbox.combined_tat as (
 with edit_tat as 
 (
 select 
@@ -323,7 +324,7 @@ select
 from 
 	new_prod_tat
 
-
+);
 	
 	
 

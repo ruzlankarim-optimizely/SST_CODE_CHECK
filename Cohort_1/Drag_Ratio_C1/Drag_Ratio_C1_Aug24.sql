@@ -1,3 +1,6 @@
+
+Drop table if exists sandbox.cohort_1_drag_ratio ;
+Create table sandbox.cohort_1_drag_ratio as (
 with tat_dates as 
 (
 select 
@@ -1610,7 +1613,7 @@ select
 from 
 	drag_ratio 
 
-
+);
 
 
 			

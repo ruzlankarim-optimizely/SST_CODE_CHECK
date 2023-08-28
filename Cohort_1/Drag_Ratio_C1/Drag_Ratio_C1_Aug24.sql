@@ -30,7 +30,7 @@ select
 		else strpos(reverse(product_family), ':')-1
 	end as num_charac
 from 
-	sandbox_pd.arr
+	ufdm.arr
 )
 
 ,	ufdm_arr_1b as 

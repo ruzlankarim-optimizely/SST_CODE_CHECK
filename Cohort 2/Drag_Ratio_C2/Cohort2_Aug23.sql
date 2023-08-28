@@ -3,8 +3,8 @@
 --Customers who fully churn don't have a transition date anyways 
 
 --Create a cartesian join 
-DROP TABLE IF EXISTS sandbox.cohort2_drag_ratio;
-CREATE TABLE sandbox.cohort2_drag_ratio AS (
+DROP TABLE IF EXISTS sandbox.cohort_2_drag_ratio;
+CREATE TABLE sandbox.cohort_2_drag_ratio AS (
 with cartersian_table as 
 	(
 	select 
@@ -430,26 +430,28 @@ from
 	final_table_2 ft2
 )
 
+select * from drag_ratio_c2
+);
+
 ----End of Code-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 --Export this for the drag ratio table 
 
 --Test: Make sure that sum of drag ratios by mcids do not cross 1 
 
-, test_1 as 
-(
-select 
-	*, 
-	sum("Ratio of ARR for Each PF in UFDM ARR") over(partition by mcid, "Date in UFDM ARR") as sum_of_ratios 
-from 
-	drag_ratio_c2 
-) 
+-- , test_1 as 
+-- (
+-- select 
+-- 	*, 
+-- 	sum("Ratio of ARR for Each PF in UFDM ARR") over(partition by mcid, "Date in UFDM ARR") as sum_of_ratios 
+-- from 
+-- 	drag_ratio_c2 
+-- ) 
 
-select 
-	*
-from 
-	test_1
-);
+-- select 
+-- 	*
+-- from 
+-- 	test_1
 
 
 

@@ -17,7 +17,7 @@ SELECT
       "Product Family in UFDM ARR" AS product_family_arr,
       "Ratio of ARR for Each PF in UFDM ARR" AS "Ratio of ARR",
       "Start of Drag Ratio in TAT" AS "Date to Drag: Sol. 1"
-FROM sandbox.cohort2_drag_ratio
+FROM sandbox.cohort_2_drag_ratio
 WHERE mcid NOT IN(SELECT  DISTINCT mcid_arr FROM sandbox.cohort_1_drag_ratio)
 )
 

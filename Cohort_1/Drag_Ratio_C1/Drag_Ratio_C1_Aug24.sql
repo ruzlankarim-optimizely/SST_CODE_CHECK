@@ -30,7 +30,7 @@ select
 		else strpos(reverse(product_family), ':')-1
 	end as num_charac
 from 
-	ufdm.arr
+	sandbox.arr_with_unbundling 
 )
 
 ,	ufdm_arr_1b as 
@@ -672,7 +672,7 @@ from
         SELECT 
             distinct mcid as mcid_welc, date_trunc('MONTH',snapshot_date) as snapshot_date_welc, '1' AS welcome_historicals
         FROM
-            ufdm.arr
+            sandbox.arr_with_unbundling 
         WHERE 
             reference_number = 'Welcome Historicals'
         ORDER BY 
@@ -1562,6 +1562,7 @@ select
 	mcid_arr, 
 	"MAX Snapshot Date of TAT",
 	product_family_arr,
+	snapshot_date_arr, 
 	"Ratio of ARR Allocated to PF UFDM ARR",
 	"Last Date of History Change TAT",
 	"Start Date of TAT", 
@@ -1591,6 +1592,7 @@ select
 	mcid_arr, 
 	"MAX Snapshot Date of TAT",
 	product_family_arr,
+	snapshot_date_arr, 
 	"Ratio of ARR Allocated to PF UFDM ARR",
 	"Date to Drag to Under Scenario 1", 
 	"Date to Drag Under Scenario 2", 

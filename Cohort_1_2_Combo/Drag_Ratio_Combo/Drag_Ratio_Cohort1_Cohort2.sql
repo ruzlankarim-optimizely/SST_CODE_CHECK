@@ -1,6 +1,6 @@
 --Code to create a combined drag ratio 
 
-with combined_drag_ration as 
+with combined_drag_ratio as 
 (
 SELECT 
       mcid_arr,
@@ -23,7 +23,7 @@ WHERE mcid NOT IN(SELECT  DISTINCT mcid_arr FROM sandbox.cohort1_drag_ratio)
 select 
 	*
 from 
-	combined_drag_ration 
+	combined_drag_ratio
 
 --Tests 
 

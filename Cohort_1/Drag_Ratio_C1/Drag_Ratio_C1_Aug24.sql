@@ -8,12 +8,12 @@ from
 --I use sst backup which has the record sources without sensitivity analysis or manual changes 
 	ufdm.sst
 where 
-	record_source = 'sst_tat'
+	record_source ilike '%sst_tat%'
 )
 
 --select 
 --	distinct mcid, 
---	snapshot_date, 
+--	snapshot_date, branch
 --	record_source 
 --from 
 --	sandbox.sst_recreate_backup
@@ -146,7 +146,7 @@ from
 --I use sst backup which has the record sources without sensitivity analysis or manual changes 
 	ufdm.sst
 where 
-	record_source = 'sst_tat'
+	record_source ilike '%sst_tat%'
 and 
 not 
 (
@@ -174,7 +174,7 @@ and
 --from 
 --	ufdm.sst
 --where 
---	record_source = 'sst_tat'
+--	record_source ilike '%sst_tat%'
 --and
 --	mcid = '5e479b1a-2251-e811-813c-70106fa51d21'
 

@@ -1,20 +1,21 @@
+drop table if exists sandbox.drag_ratio_with_sku;
 CREATE TABLE sandbox.drag_ratio_with_sku AS (
   with tat_dates as (
     select distinct mcid,
       max(date_trunc('MONTH', snapshot_date)) over(partition by mcid, record_source) as "MAX Snapshot Date of TAT"
     from --    ufdm.sst
-      --I use sst backup which has the record sources without sensitivity analysis or manual changes 
-      sandbox.control_sst_before_manual_changes
-    where record_source = 'sst_tat'
-  ) --select 
-  --    distinct mcid, 
-  --    snapshot_date, 
-  --    record_source 
-  --from 
+      --I use sst backup which has the record sources without sensitivity analysis or manual changes
+      ufdm.sst
+    where record_source ilike '%sst_tat%'
+  ) --select
+  --    distinct mcid,
+  --    snapshot_date,
+  --    record_source
+  --from
   --    sandbox.sst_recreate_backup
-  --where 
+  --where
   --    mcid = '10d0858f-9f42-dd11-93be-0018717a8c82'
-  --Start prepping UFDM for Join 
+  --Start prepping UFDM for Join
 ,
   ufdm_arr_1a as (
     select *,
@@ -31,21 +32,21 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       sku,
       product_family,
       trim(right(product_family, num_charac)) as product_family_ufdm
-    from ufdm_arr_1a --Take only Non-Fopti Data from UFDM ARR 
-    where --not 
+    from ufdm_arr_1a --Take only Non-Fopti Data from UFDM ARR
+    where --not
       --(
       --date_trunc('month', snapshot_date) = '2022-01-01'::DATE
       --                  AND product_family = 'Recurring: Cloud: Other Bookings: Campaign'
       --)
       line_type not ILIKE '%Fopti%'
       and arr_source not ilike '%GMBH overages%'
-  ) --select 
-  --    distinct arr_source 
-  --from 
-  --    ufdm.arr 
-  --where 
+  ) --select
+  --    distinct arr_source
+  --from
+  --    ufdm.arr
+  --where
   --    mcid = '5e479b1a-2251-e811-813c-70106fa51d21'
-  --and 
+  --and
   --    snapshot_date in ('2022-01-31')
 ,
   ufdm_arr_1c as (
@@ -58,13 +59,13 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       end as product_family,
       sku
     from ufdm_arr_1b
-  ) --select 
+  ) --select
   --    *
-  --from 
+  --from
   --    ufdm_arr_1c
-  --where 
+  --where
   --    mcid =      '50661331-d24e-e811-813c-70106fa6f451'
-  --This is the ufdm file with product family and arr data 
+  --This is the ufdm file with product family and arr data
 ,
   ufdm_arr_1 as (
     select distinct mcid as mcid_arr,
@@ -80,13 +81,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ) as "Sum by Product Family,SKU and Date - UFDM ARR",
       sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as "Sum by MCID & Date - UFDM ARR"
     from ufdm_arr_1c
-  ) --select 
-  --    *
-  --from 
-  --    ufdm_arr_1 
-  --where 
-  --    mcid_arr = '00855ad7-1ba5-45bc-b744-2c60ae82b5e1'
-  --We need min. date when the MCID starts
+  ) --We need min. date when the MCID starts
 ,
   ufdm_arr_11 as (
     select mcid_arr,
@@ -99,14 +94,14 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       "Sum by Product Family,SKU and Date - UFDM ARR",
       "Sum by MCID & Date - UFDM ARR"
     from ufdm_arr_1
-  ) --select 
-  --    distinct product_family_arr 
-  --from 
-  --    ufdm_arr_11 
-  --where 
+  ) --select
+  --    distinct product_family_arr
+  --from
+  --    ufdm_arr_11
+  --where
   --    mcid_arr = '003463de-d300-df11-b498-0018717a8c82'
-  --Prepare the TAT data 
-  --Change Content PaaS to Content SaaS 
+  --Prepare the TAT data
+  --Change Content PaaS to Content SaaS
 ,
   tat_0 as (
     select mcid,
@@ -116,28 +111,28 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         when product_family = 'Recurring: Cloud: Content Cloud: Content PaaS' then 'Recurring: Cloud: Content Cloud: Content SaaS'
         else product_family
       end as product_family_tat
-    from --I use sst backup which has the record sources without sensitivity analysis or manual changes 
-      sandbox.control_sst_before_manual_changes
-    where record_source = 'sst_tat'
+    from --I use sst backup which has the record sources without sensitivity analysis or manual changes
+      ufdm.sst
+    where record_source ilike '%sst_tat%'
       and not (
         date_trunc('month', snapshot_date) = '2021-12-01'::DATE
         AND product_family = 'Recurring: Cloud: Other Bookings: Campaign'
       )
       and overage_flag is distinct
     from 'Y'
-  ) --select 
+  ) --select
   --    *
-  --from 
-  --    ufdm.sst 
-  --where 
+  --from
+  --    ufdm.sst
+  --where
   --    mcid = '5e479b1a-2251-e811-813c-70106fa51d21'
-  --and 
+  --and
   --    date_trunc('MONTH',snapshot_date) = '2021-12-01'
-  --select 
+  --select
   --    *
-  --from 
+  --from
   --    sandbox.control_sst_before_manual_changes
-  --where 
+  --where
   --    record_source = 'sst_tat'
   --and
   --    mcid = '5e479b1a-2251-e811-813c-70106fa51d21'
@@ -153,13 +148,13 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ) as "Sum by Product Family and Date - TAT",
       sum(arr) over(partition by mcid, snapshot_date) as "Sum by MICD & Date - TAT"
     from tat_0
-  ) --select 
+  ) --select
   --    *
-  --from 
-  --    tat_1 
-  --where 
+  --from
+  --    tat_1
+  --where
   --    mcid_tat = '95a4a5fa-47f8-8e25-9b73-57e19bd1e791'
-  --Filter the TAT data only to have snapshot dates which are the last snapshot dates for TAT in SST 
+  --Filter the TAT data only to have snapshot dates which are the last snapshot dates for TAT in SST
 ,
   tat_2 as (
     select t1.mcid_tat,
@@ -172,19 +167,19 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       and date_trunc('MONTH', t1.snapshot_date_tat) = date_trunc('MONTH', td."MAX Snapshot Date of TAT")
     where t1."Sum by Product Family and Date - TAT" > 0
       or t1.product_family_tat is not null
-  ) --select 
+  ) --select
   --    distinct mcid
-  --from 
+  --from
   --    tat_dates
-  --select 
+  --select
   --    *
-  --from 
+  --from
   --    tat_2
-  --where 
+  --where
   --    mcid_tat = '00ec9665-e386-18a4-2d14-40b5803bac2c'
-  --take the UFDM ARR table and only take the MCIDs that are present in TAT at transition date and take only the snapshot dates that are Transition Date + 1 month 
-  --This is the ufdm_arr_2 -- that needs to be joined to 
-  --We need to do an inner join on mcid and snapshot date.  
+  --take the UFDM ARR table and only take the MCIDs that are present in TAT at transition date and take only the snapshot dates that are Transition Date + 1 month
+  --This is the ufdm_arr_2 -- that needs to be joined to
+  --We need to do an inner join on mcid and snapshot date.
 ,
   ufdm_arr_2 as (
     select ua1.mcid_arr,
@@ -196,14 +191,14 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
     from ufdm_arr_11 ua1
       inner join tat_dates td on ua1.mcid_arr = td.mcid
       and (ua1.snapshot_date_arr) = td."MAX Snapshot Date of TAT" + interval '1 Month'
-  ) --select 
+  ) --select
   --    *
   ----  "MAX Snapshot Date of TAT"+ interval '1 Month'
-  --from 
+  --from
   --    ufdm_arr_2
-  --where 
+  --where
   --    mcid_arr = 'cccfcefe-1eaa-db11-8952-0018717a8c82'
-  ---Now take the mcids which are only in ufdm arr for tat 
+  ---Now take the mcids which are only in ufdm arr for tat
 ,
   tat_3 as (
     select t2.mcid_tat,
@@ -215,13 +210,13 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
     where t2.mcid_tat in (
         select distinct mcid_arr
         from ufdm_arr_2
-      ) --Get Rid of Any PF that has 0 data 
+      ) --Get Rid of Any PF that has 0 data
       and t2."Sum by Product Family and Date - TAT" > 0
-  ) --select 
+  ) --select
   --    distinct mcid_tat
-  --from 
+  --from
   --    tat_2
-  --where 
+  --where
   --    mcid_tat = 'cccfcefe-1eaa-db11-8952-0018717a8c82'
 ,
   combined_table_1 as (
@@ -241,10 +236,11 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
     from tat_3 t2
       full join ufdm_arr_2 u1 on t2.mcid_tat = u1.mcid_arr
       and t2.product_family_tat = u1.product_family_arr
-  ) --select 
-  --    distinct "Combined MCID"
-  --from 
-  --    combined_table_1
+  ) --   select
+  --      *
+  --   from
+  --      combined_table_1
+  --   where mcid_arr  = '0033532c-9f42-dd11-93be-0018717a8c82'
 ,
   combined_table_2 as (
     select "Combined MCID",
@@ -298,14 +294,14 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         (
           "Presence of PF in 2 Tables" = 'Present in TAT only - Loss of PF in Bridge'
           and "Difference between UFDM and TAT -- ARR" <= -1
-        ) then 'Churn' --Churn case 2 
+        ) then 'Churn' --Churn case 2
         when "Presence of PF in 2 Tables" = 'Present in Both TAT and UFDM ARR'
         and "Sum by Product Family and Date - TAT" > 1
-        and "Sum by Product Family,SKU and Date - UFDM ARR" < 1 then 'Churn' --New case 1      
+        and "Sum by Product Family,SKU and Date - UFDM ARR" < 1 then 'Churn' --New case 1
         when (
           "Presence of PF in 2 Tables" = 'Present in UFDM ARR only - New PF in Bridge'
           and "Difference between UFDM and TAT -- ARR" >= 1
-        ) then 'New' --New case 2 
+        ) then 'New' --New case 2
         when "Presence of PF in 2 Tables" = 'Present in Both TAT and UFDM ARR'
         and "Sum by Product Family and Date - TAT" < 1
         and "Sum by Product Family,SKU and Date - UFDM ARR" > 1 then 'New'
@@ -340,7 +336,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         ) over(partition by "Combined MCID") = 0 then 1
         else 0
       end as "Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       case
         when sum(
           case
@@ -350,7 +346,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         ) over(partition by "Combined MCID") = 0 then 1
         else 0
       end as "Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       case
         when sum(
           case
@@ -383,13 +379,13 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       "Product Bridge",
       --Flag only flat customers
       "Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       "Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       "New/Churn Customers Only (1 if yes)",
       --Flag customers who have -- ARR between the 2 tables is the same, PF Makeup is the same but Ratio is Different
       case
-        when --same ARR 
+        when --same ARR
         ABS(
           coalesce(
             sum("Sum by Product Family and Date - TAT") over(partition by "Combined MCID"),
@@ -399,9 +395,9 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
             0
           )
         ) < 5
-        and --not a flat customer 
+        and --not a flat customer
         "Flat Customers Only (1 if yes)" != 1
-        and --product families present in both 
+        and --product families present in both
         sum(
           case
             when "Presence of PF in 2 Tables" in ('Present in Both TAT and UFDM ARR') then 0
@@ -410,9 +406,9 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         ) over(partition by "Combined MCID") = 0 then 1
         else 0
       end as "Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag customers who have -- ARR between the 2 tables is the same, PF Makeup is the Different & Ratio is Different 
+      --Flag customers who have -- ARR between the 2 tables is the same, PF Makeup is the Different & Ratio is Different
       case
-        when --same ARR 
+        when --same ARR
         ABS(
           coalesce(
             sum("Sum by Product Family and Date - TAT") over(partition by "Combined MCID"),
@@ -422,9 +418,9 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
             0
           )
         ) < 5
-        and --not a flat customer 
+        and --not a flat customer
         "Flat Customers Only (1 if yes)" != 1
-        and --Different product families in both 
+        and --Different product families in both
         sum(
           case
             when "Presence of PF in 2 Tables" in ('Present in Both TAT and UFDM ARR') then 0
@@ -435,7 +431,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       end as "Same ARR & But Different PF and Ratio (1 if yes)",
       --Identify Customers who have Different ARR and Different Makeup
       case
-        when --Different ARR 
+        when --Different ARR
         ABS(
           coalesce(
             sum("Sum by Product Family and Date - TAT") over(partition by "Combined MCID"),
@@ -445,9 +441,9 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
             0
           )
         ) > 5
-        and --not a flat customer 
+        and --not a flat customer
         "Flat Customers Only (1 if yes)" != 1
-        and --Different product families in both 
+        and --Different product families in both
         sum(
           case
             when "Presence of PF in 2 Tables" in ('Present in Both TAT and UFDM ARR') then 0
@@ -456,9 +452,9 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         ) over(partition by "Combined MCID") != 0 then 1
         else 0
       end as "Different ARR & PF in Both Tables(1 if yes)",
-      --Identify Customers who have Different ARR and Same Makeup 
+      --Identify Customers who have Different ARR and Same Makeup
       case
-        when --different ARR 
+        when --different ARR
         ABS(
           coalesce(
             sum("Sum by Product Family and Date - TAT") over(partition by "Combined MCID"),
@@ -468,9 +464,9 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
             0
           )
         ) > 5
-        and --not a flat customer 
+        and --not a flat customer
         "Flat Customers Only (1 if yes)" != 1
-        and --Same product families in both 
+        and --Same product families in both
         sum(
           case
             when "Presence of PF in 2 Tables" in ('Present in Both TAT and UFDM ARR') then 0
@@ -490,10 +486,10 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       snapshot_date_arr,
       "Sum by Product Family,SKU and Date - UFDM ARR",
       "Start Date in UFDM ARR"
-    from combined_table_4 --where 
+    from combined_table_4 --where
       --    "Combined MCID" = '50661331-d24e-e811-813c-70106fa6f451'
-  ) --Find out if the churn was true churn or churn due to different source. Join it to previous month's data 
-  --Make a sub-table of UFDM ARR with previous month's data 
+  ) --Find out if the churn was true churn or churn due to different source. Join it to previous month's data
+  --Make a sub-table of UFDM ARR with previous month's data
 ,
   ufdm_arr_2b as (
     select ua1.mcid_arr as mcid_prev_month,
@@ -503,9 +499,9 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ua1."Sum by Product Family,SKU and Date - UFDM ARR" as "Sum by Product Family,SKU and Date - UFDM ARR Prev. Month"
     from ufdm_arr_1 ua1
       inner join tat_dates td on ua1.mcid_arr = td.mcid
-      and --use same snapshot date 
+      and --use same snapshot date
       (ua1.snapshot_date_arr) = td."MAX Snapshot Date of TAT"
-  ) --Join this to the combined table above on TAT mcid, date and product family 
+  ) --Join this to the combined table above on TAT mcid, date and product family
 ,
   combined_table_6 as (
     select ct5."Combined MCID" as "Combined MCID after Transition",
@@ -520,17 +516,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct5."Product Bridge",
       --Flag only flat customers
       ct5."Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       ct5."Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       ct5."New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       ct5."Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       "Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       ct5."Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       ct5."Different ARR But Same PF in Both Tables(1 if yes)",
       ct5.mcid_tat,
       ct5.product_family_tat,
@@ -552,7 +548,9 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       full join ufdm_arr_2b u2b on ct5.mcid_tat = u2b.mcid_prev_month
       and ct5.product_family_tat = u2b.pf_arr_prev_month
       and ct5.snapshot_date_tat = u2b.snapshot_date_arr_pmonth
-  ) --Start calculating true churn 
+      and ct5.sku = u2b.sku_prev_month
+  ) --Start calculating true churn
+  --   select * from combined_table_6 where mcid_arr= '0033532c-9f42-dd11-93be-0018717a8c82'
 ,
   combined_table_7 as (
     select "Combined MCID after Transition",
@@ -569,17 +567,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       "Product Bridge",
       --Flag only flat customers
       "Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       "Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       "New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       "Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       "Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       "Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       "Different ARR But Same PF in Both Tables(1 if yes)",
       mcid_tat,
       product_family_tat,
@@ -597,15 +595,15 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       sku_prev_month,
       snapshot_date_arr_pmonth,
       "Sum by Product Family,SKU and Date - UFDM ARR Prev. Month",
-      --Identify True Bridge Customers 
-      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match     
+      --Identify True Bridge Customers
+      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match
       case
         when sum (
           case
             when pf_arr_prev_month = product_family_tat --Same Product family in [re]
             and abs(
               "Sum by Product Family,SKU and Date - UFDM ARR Prev. Month" - "Sum by Product Family and Date - TAT"
-            ) < 1 --same ARR 
+            ) < 1 --same ARR
             then 0
             else 1
           end
@@ -616,14 +614,14 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         else 0
       end as "No Diff between UFDM and TAT Prev. Month (1 if yes)"
     from combined_table_6
-  ) --Join it to Campaign Welcome and Unbundling 
+  ) --Join it to Campaign Welcome and Unbundling
 ,
   campaign AS (
     SELECT distinct mcid as mcid_camp,
       date_trunc('MONTH', snapshot_date) as snapshot_date_camp,
       '1' AS campaign_overages
     FROM ufdm.sst
-    WHERE record_source = 'ufdm_campaigns_dec2021'
+    WHERE record_source ilike '%ufdm_campaigns_dec2021%'
       AND overage_flag = 'Y'
     ORDER BY 1,
       2
@@ -659,17 +657,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct7."Product Bridge",
       --Flag only flat customers
       ct7."Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       ct7."Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       ct7."New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       ct7."Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       ct7."Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       ct7."Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       ct7."Different ARR But Same PF in Both Tables(1 if yes)",
       ct7.mcid_tat,
       ct7.product_family_tat,
@@ -687,8 +685,8 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct7.sku_prev_month,
       ct7.snapshot_date_arr_pmonth,
       ct7."Sum by Product Family,SKU and Date - UFDM ARR Prev. Month",
-      --Identify True Bridge Customers 
-      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match     
+      --Identify True Bridge Customers
+      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match
       ct7."No Diff between UFDM and TAT Prev. Month (1 if yes)",
       cap.campaign_overages as "Campaign Flag (1 if yes)",
       welc.welcome_historicals as "Wecome Flag (1 if yes)",
@@ -700,8 +698,8 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       and ct7.snapshot_date_arr = welc.snapshot_date_welc
       left join unbundling ubund on ct7.mcid_arr = ubund.mcid_unbund
       and ct7.snapshot_date_arr = ubund.snapshot_date_unbund
-  ) --Take customers who are not flat or true movement customers 
-  --End of Initial Bucket Analysis 
+  ) --Take customers who are not flat or true movement customers
+  --End of Initial Bucket Analysis
 ,
   table_invest_1 as (
     select ct8."Combined MCID after Transition",
@@ -715,17 +713,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct8."Product Bridge",
       --Flag only flat customers
       ct8."Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       ct8."Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       ct8."New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       ct8."Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       ct8."Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       ct8."Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       ct8."Different ARR But Same PF in Both Tables(1 if yes)",
       ct8.mcid_tat,
       ct8.product_family_tat,
@@ -743,8 +741,8 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct8.sku_prev_month,
       ct8.snapshot_date_arr_pmonth,
       ct8."Sum by Product Family,SKU and Date - UFDM ARR Prev. Month",
-      --Identify True Bridge Customers 
-      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match     
+      --Identify True Bridge Customers
+      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match
       ct8."No Diff between UFDM and TAT Prev. Month (1 if yes)",
       ct8."Campaign Flag (1 if yes)",
       ct8."Wecome Flag (1 if yes)",
@@ -752,17 +750,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
     from combined_table_8 ct8
     where "Flat Customers Only (1 if yes)" = 0
       AND "No Diff between UFDM and TAT Prev. Month (1 if yes)" = 0
-  ) --select 
+  ) --select
   --    count(distinct "Combined MCID Before and After Transition")
-  --from 
-  --    table_invest_1 
-  --Take TAT data for those mcids only 
+  --from
+  --    table_invest_1
+  --Take TAT data for those mcids only
 ,
   table_invest_2 as (
     select distinct ti1.mcid_tat,
       ti1.snapshot_date_tat as "Max Snapshot Date of TAT"
     from table_invest_1 ti1
-  ) --Take data from TAT for only these customers 
+  ) --Take data from TAT for only these customers
 ,
   table_invest_3 as (
     select ti2.mcid_tat as "MCID TAT",
@@ -774,9 +772,9 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       t1."Sum by MICD & Date - TAT"
     from tat_1 t1
       inner join table_invest_2 ti2 on ti2.mcid_tat = t1.mcid_tat
-  ) --select 
+  ) --select
   --    count(distinct "MCID TAT")
-  --from 
+  --from
   --    table_invest_3
   --Now only keep data in tat where snapshot_date <= Max Snapshot Date of TAT
 ,
@@ -792,16 +790,16 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
     where ti3.snapshot_date_tat <= ti3."Max Snapshot Date of TAT"
       and ----Only take non null product families where ARR is greater than zero
       ti3."Sum by Product Family and Date - TAT" > 0
-  ) --select 
+  ) --select
   --    *
-  --from 
-  --    table_invest_4 
-  --where 
+  --from
+  --    table_invest_4
+  --where
   --    "MCID TAT" = '001ea07d-2184-df11-8804-0018717a8c82'
-  --The count will drop as we get rid of all customers who do not have values greater than zero 
-  --select 
+  --The count will drop as we get rid of all customers who do not have values greater than zero
+  --select
   --    count(distinct "MCID TAT")
-  --from 
+  --from
   --    table_invest_4
   --Now join current month's data to previous months -- using MCID and PF. Do a Full Join
 ,
@@ -824,8 +822,8 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
     from table_invest_4 ti4
       full join table_invest_4 ti4a on ti4."MCID TAT" = ti4a."MCID TAT"
       and ti4.snapshot_date_tat = ti4a.snapshot_date_tat + interval '1 month'
-      and ti4.product_family_tat = ti4a.product_family_tat --stop taking data from the previous month where prev. month date in TAT < Max Date in TAT 
-      --where 
+      and ti4.product_family_tat = ti4a.product_family_tat --stop taking data from the previous month where prev. month date in TAT < Max Date in TAT
+      --where
       --    ti4a.snapshot_date_tat < ti4."Max Snapshot Date of TAT"
   ),
   table_invest_5a as (
@@ -858,11 +856,11 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ti5."Sum by MICD & Date - TAT"
     from table_invest_5a ti5
     where ti5."Combined Date TAT" <= ti5."Max Snapshot Date of TAT"
-  ) --select 
+  ) --select
   --    *
-  --from 
-  --    table_invest_5b 
-  --where 
+  --from
+  --    table_invest_5b
+  --where
   --    "Combined MCID: TAT" = '025c17f2-7b31-e411-9f63-0050568d2da8'
 ,
   table_invest_6 as (
@@ -886,11 +884,11 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         else 1
       end as "Prev Month and Current Month PF Matches (1 if no)"
     from table_invest_5b ti5
-  ) --select 
+  ) --select
   --    *
-  --from 
+  --from
   --    table_invest_6
-  --where 
+  --where
   --    "Combined MCID: TAT" = '150b3417-2400-bed2-9fbb-0468b547aad4'
 ,
   table_invest_7 as (
@@ -917,13 +915,13 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         else 0
       end as "Mismatch between PF in TAT History (1 if yes)"
     from table_invest_6 ti6
-  ) --select 
+  ) --select
   --    *
-  --from 
+  --from
   --    table_invest_7
-  --where 
+  --where
   --    "Combined MCID: TAT" = '046135a0-ebe5-e411-9afb-0050568d2da8'
-  --End of Adding Flags for TAT History 
+  --End of Adding Flags for TAT History
 ,
   table_invest_7a as (
     select distinct "Combined MCID: TAT",
@@ -931,13 +929,13 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       "Last Date of History Change TAT",
       "Start Date of TAT"
     from table_invest_7
-  ) --select 
+  ) --select
   --    *
-  --from 
+  --from
   --    table_invest_7a
-  --where 
+  --where
   --    "Combined MCID: TAT" = '046135a0-ebe5-e411-9afb-0050568d2da8'
-  --Add them back to the original analysis 
+  --Add them back to the original analysis
 ,
   combined_table_9 as (
     select ct8."Combined MCID after Transition",
@@ -951,17 +949,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct8."Product Bridge",
       --Flag only flat customers
       ct8."Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       ct8."Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       ct8."New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       ct8."Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       ct8."Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       ct8."Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       ct8."Different ARR But Same PF in Both Tables(1 if yes)",
       ct8.mcid_tat,
       ct8.product_family_tat,
@@ -979,28 +977,28 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct8.sku_prev_month,
       ct8.snapshot_date_arr_pmonth,
       ct8."Sum by Product Family,SKU and Date - UFDM ARR Prev. Month",
-      --Identify True Bridge Customers 
-      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match     
+      --Identify True Bridge Customers
+      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match
       ct8."No Diff between UFDM and TAT Prev. Month (1 if yes)",
       ct8."Campaign Flag (1 if yes)",
       ct8."Wecome Flag (1 if yes)",
       ct8."Unbundling (1 if yes)",
-      --Add Flags if it has the same history in TAT or it changes. Also add flags that 
+      --Add Flags if it has the same history in TAT or it changes. Also add flags that
       ti7."Combined MCID: TAT",
       ti7."Mismatch between PF in TAT History (1 if yes)",
       ti7."Last Date of History Change TAT",
       ti7."Start Date of TAT"
     from combined_table_8 ct8
       left join table_invest_7a ti7 on ct8.mcid_tat = ti7."Combined MCID: TAT"
-  ) --select 
-  --    *
-  --from 
-  --    combined_table_9
-  --where 
-  --    "Combined MCID Before and After Transition" = '046135a0-ebe5-e411-9afb-0050568d2da8'
+  ) --   select
+  --      *
+  --   from
+  --      combined_table_9
+  --   where
+  --      "Combined MCID Before and After Transition" = '0033532c-9f42-dd11-93be-0018717a8c82'
   --Coalesnce Mismatch between PF in TAT History to have either 1 (if there is mismatch) or 0 (no mistmatch )
   --Also start using dense_rank for each of the product families in UFDM ARR
-  --Also coalesce the max snapshot date, the start date and last date of change over all rows for a customer 
+  --Also coalesce the max snapshot date, the start date and last date of change over all rows for a customer
 ,
   combined_table_10 as (
     select ct9."Combined MCID after Transition",
@@ -1014,17 +1012,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct9."Product Bridge",
       --Flag only flat customers
       ct9."Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       ct9."Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       ct9."New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       ct9."Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       ct9."Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       ct9."Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       ct9."Different ARR But Same PF in Both Tables(1 if yes)",
       ct9.mcid_tat,
       ct9.product_family_tat,
@@ -1060,13 +1058,13 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct9.sku_prev_month,
       ct9.snapshot_date_arr_pmonth,
       ct9."Sum by Product Family,SKU and Date - UFDM ARR Prev. Month",
-      --Identify True Bridge Customers 
-      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match     
+      --Identify True Bridge Customers
+      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match
       ct9."No Diff between UFDM and TAT Prev. Month (1 if yes)",
       ct9."Campaign Flag (1 if yes)",
       ct9."Wecome Flag (1 if yes)",
       ct9."Unbundling (1 if yes)",
-      --Take the max of history in TAT 
+      --Take the max of history in TAT
       max(
         ct9."Mismatch between PF in TAT History (1 if yes)"
       ) over(
@@ -1079,14 +1077,14 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         partition by ct9."Combined MCID Before and After Transition"
       ) as "Start Date of TAT"
     from combined_table_9 ct9
-  ) --select 
+  ) --select
   --    *
-  --from 
+  --from
   --    combined_table_10
-  --where 
+  --where
   --    "Combined MCID Before and After Transition" = '046135a0-ebe5-e411-9afb-0050568d2da8'
-  --Now take the max of each dense rank to find the number of product families in TAT and UFDM ARR during Transition 
-  --Also take max of last date of change and start date of tat -- to fill up null rows where we have no TAT data 
+  --Now take the max of each dense rank to find the number of product families in TAT and UFDM ARR during Transition
+  --Also take max of last date of change and start date of tat -- to fill up null rows where we have no TAT data
 ,
   combined_table_11 as (
     select ct10."Combined MCID after Transition",
@@ -1100,17 +1098,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct10."Product Bridge",
       --Flag only flat customers
       ct10."Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       ct10."Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       ct10."New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       ct10."Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       ct10."Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       ct10."Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       ct10."Different ARR But Same PF in Both Tables(1 if yes)",
       ct10.mcid_tat,
       ct10.product_family_tat,
@@ -1137,13 +1135,13 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct10.sku_prev_month,
       ct10.snapshot_date_arr_pmonth,
       ct10."Sum by Product Family,SKU and Date - UFDM ARR Prev. Month",
-      --Identify True Bridge Customers 
-      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match     
+      --Identify True Bridge Customers
+      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match
       ct10."No Diff between UFDM and TAT Prev. Month (1 if yes)",
       ct10."Campaign Flag (1 if yes)",
       ct10."Wecome Flag (1 if yes)",
       ct10."Unbundling (1 if yes)",
-      --Add Flags if it has the same history in TAT or it changes 
+      --Add Flags if it has the same history in TAT or it changes
       coalesce(
         ct10."Mismatch between PF in TAT History (1 if yes)",
         0
@@ -1152,13 +1150,13 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct10."Start Date of TAT"
     from combined_table_10 ct10
     order by "Combined MCID Before and After Transition"
-  ) --select 
+  ) --select
   --    *
-  --from 
+  --from
   --    combined_table_11
-  --where 
+  --where
   --    "Combined MCID Before and After Transition" = '001ea07d-2184-df11-8804-0018717a8c82'
-  --Take Max of each product family to makesure it is the same throughout the MCID 
+  --Take Max of each product family to makesure it is the same throughout the MCID
 ,
   combined_table_12 as (
     select ct11."Combined MCID after Transition",
@@ -1172,17 +1170,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct11."Product Bridge",
       --Flag only flat customers
       ct11."Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       ct11."Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       ct11."New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       ct11."Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       ct11."Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       ct11."Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       ct11."Different ARR But Same PF in Both Tables(1 if yes)",
       ct11.mcid_tat,
       ct11.product_family_tat,
@@ -1207,19 +1205,19 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct11.sku_prev_month,
       ct11.snapshot_date_arr_pmonth,
       ct11."Sum by Product Family,SKU and Date - UFDM ARR Prev. Month",
-      --Identify True Bridge Customers 
-      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match     
+      --Identify True Bridge Customers
+      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match
       ct11."No Diff between UFDM and TAT Prev. Month (1 if yes)",
       ct11."Campaign Flag (1 if yes)",
       ct11."Wecome Flag (1 if yes)",
       ct11."Unbundling (1 if yes)",
-      --Add Flags if it has the same history in TAT or it changes 
+      --Add Flags if it has the same history in TAT or it changes
       ct11."Mismatch between PF in TAT History (1 if yes)",
       ct11."Last Date of History Change TAT",
       ct11."Start Date of TAT"
     from combined_table_11 ct11
     order by "Combined MCID Before and After Transition"
-  ) --Start Looking at product family transition. Also look at ratios allocated to UFDM PF During Point of Transition 
+  ) --Start Looking at product family transition. Also look at ratios allocated to UFDM PF During Point of Transition
 ,
   combined_table_13 as (
     select ct12."Combined MCID after Transition",
@@ -1237,17 +1235,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct12."Product Bridge",
       --Flag only flat customers
       ct12."Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       ct12."Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       ct12."New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       ct12."Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       ct12."Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       ct12."Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       ct12."Different ARR But Same PF in Both Tables(1 if yes)",
       ct12.mcid_tat,
       ct12.product_family_tat,
@@ -1279,36 +1277,36 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct12.sku_prev_month,
       ct12.snapshot_date_arr_pmonth,
       ct12."Sum by Product Family,SKU and Date - UFDM ARR Prev. Month",
-      --Identify True Bridge Customers 
-      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match     
+      --Identify True Bridge Customers
+      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match
       ct12."No Diff between UFDM and TAT Prev. Month (1 if yes)",
       ct12."Campaign Flag (1 if yes)",
       ct12."Wecome Flag (1 if yes)",
       ct12."Unbundling (1 if yes)",
-      --Add Flags if it has the same history in TAT or it changes 
+      --Add Flags if it has the same history in TAT or it changes
       ct12."Mismatch between PF in TAT History (1 if yes)",
       ct12."Last Date of History Change TAT",
       ct12."Start Date of TAT",
-      --Add Flags for Number of PF from UFDM ARR to TAT 
-      --1) Single PF -> Single PF 
+      --Add Flags for Number of PF from UFDM ARR to TAT
+      --1) Single PF -> Single PF
       case
         when ct12."No of PF TAT" = 1
         and ct12."No of PF ARR" = 1 then 1
         else 0
       end as "Single PF to Single PF (1 if yes)",
-      --2) Multi PF --> Single PF 
+      --2) Multi PF --> Single PF
       case
         when ct12."No of PF TAT" > 1
         and ct12."No of PF ARR" = 1 then 1
         else 0
       end as "Multi PF to Single PF (1 if yes)",
-      --3) Single to Multi PF 
+      --3) Single to Multi PF
       case
         when ct12."No of PF TAT" = 1
         and ct12."No of PF ARR" > 1 then 1
         else 0
       end as "Single PF to Multi PF (1 if yes)",
-      --4) Multi to Multi PF 
+      --4) Multi to Multi PF
       case
         when ct12."No of PF TAT" > 1
         and ct12."No of PF ARR" > 1 then 1
@@ -1316,13 +1314,13 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       end as "Multi PF to Multi PF (1 if yes)"
     from combined_table_12 ct12 --Get rid of any customers who don't have any data in TAT
     where ct12."No of PF TAT" > 0
-  ) --select 
+  ) --select
   --    *
-  --from 
-  --    combined_table_13 
-  --where 
+  --from
+  --    combined_table_13
+  --where
   --    "Combined MCID Before and After Transition" = '046135a0-ebe5-e411-9afb-0050568d2da8'
-  --Product Family Transition 
+  --Product Family Transition
 ,
   combined_table_14 as (
     select ct13."Combined MCID after Transition",
@@ -1338,17 +1336,17 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct13."Product Bridge",
       --Flag only flat customers
       ct13."Flat Customers Only (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       ct13."Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       ct13."New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       ct13."Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       ct13."Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       ct13."Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       ct13."Different ARR But Same PF in Both Tables(1 if yes)",
       ct13.mcid_tat,
       ct13.product_family_tat,
@@ -1370,18 +1368,18 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct13.sku_prev_month,
       ct13.snapshot_date_arr_pmonth,
       ct13."Sum by Product Family,SKU and Date - UFDM ARR Prev. Month",
-      --Identify True Bridge Customers 
-      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match     
+      --Identify True Bridge Customers
+      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match
       ct13."No Diff between UFDM and TAT Prev. Month (1 if yes)",
       ct13."Campaign Flag (1 if yes)",
       ct13."Wecome Flag (1 if yes)",
       ct13."Unbundling (1 if yes)",
-      --Add Flags if it has the same history in TAT or it changes 
+      --Add Flags if it has the same history in TAT or it changes
       ct13."Mismatch between PF in TAT History (1 if yes)",
       ct13."Last Date of History Change TAT",
       ct13."Start Date of TAT",
-      --Add Flags for Number of PF from UFDM ARR to TAT 
-      --1) Single PF -> Single PF 
+      --Add Flags for Number of PF from UFDM ARR to TAT
+      --1) Single PF -> Single PF
       case
         when ct13."Single PF to Single PF (1 if yes)" = 1 then 'Single PF to Single PF'
         when ct13."Multi PF to Single PF (1 if yes)" = 1 then 'Multi PF to Single PF'
@@ -1390,7 +1388,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
         else null
       end as "Product Family Transition"
     from combined_table_13 ct13
-  ) --Full Export 
+  ) --Full Export
 ,
   combined_table_15 as (
     select ct14."Combined MCID after Transition",
@@ -1406,20 +1404,20 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct14."Product Bridge",
       --Flag only flat customers
       ct14."Flat Customers Only (1 if yes)",
-      --Identify True Bridge Customers 
-      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match     
+      --Identify True Bridge Customers
+      --If you compare PF Makeup and ARR by PF between UFDM and TAT in the month before the transition month, the PF & ARR must match
       ct14."No Diff between UFDM and TAT Prev. Month (1 if yes)",
-      --Flag only Upsell/Partial Churn Customers 
+      --Flag only Upsell/Partial Churn Customers
       ct14."Upsell/Partial Customers Only (1 if yes)",
-      --Flag only New/Churn Customers 
+      --Flag only New/Churn Customers
       ct14."New/Churn Customers Only (1 if yes)",
       --Flag Customers who have Same ARR and PF but Ratio is Different
       ct14."Same ARR & PF But Different Ratio (1 if yes)",
-      --Flag Customers who have Same ARR but different PF and Ratio 
+      --Flag Customers who have Same ARR but different PF and Ratio
       ct14."Same ARR & But Different PF and Ratio (1 if yes)",
-      --Flag Customers who have Different ARR and PF in Both Tables 
+      --Flag Customers who have Different ARR and PF in Both Tables
       ct14."Different ARR & PF in Both Tables(1 if yes)",
-      --Flag Customers who have Different ARR but Same PF Makeup in both Tables 
+      --Flag Customers who have Different ARR but Same PF Makeup in both Tables
       ct14."Different ARR But Same PF in Both Tables(1 if yes)",
       ct14.mcid_tat,
       ct14.product_family_tat,
@@ -1444,68 +1442,68 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ct14."Campaign Flag (1 if yes)",
       ct14."Wecome Flag (1 if yes)",
       ct14."Unbundling (1 if yes)",
-      --Add Flags if it has the same history in TAT or it changes 
+      --Add Flags if it has the same history in TAT or it changes
       ct14."Mismatch between PF in TAT History (1 if yes)",
       ct14."Last Date of History Change TAT",
       ct14."Start Date of TAT",
-      --Add Flags for Number of PF from UFDM ARR to TAT 
-      --1) Single PF -> Single PF 
+      --Add Flags for Number of PF from UFDM ARR to TAT
+      --1) Single PF -> Single PF
       ct14."Product Family Transition"
     from combined_table_14 ct14
-  ) --select 
+  ) --select
   --    *
-  --from 
-  --    combined_table_15 
-  --where 
+  --from
+  --    combined_table_15
+  --where
   --    "Combined MCID Before and After Transition" = '5e479b1a-2251-e811-813c-70106fa51d21'
-  --select 
+  --select
   --    *
-  --from 
-  --    combined_table_15 
-  --where 
+  --from
+  --    combined_table_15
+  --where
   --    "Combined MCID Before and After Transition" = '2178614d-6aef-fea3-1223-983ef99e185d'
   --
-  ----Full Export 
-  --select 
+  ----Full Export
+  --select
   --    count(distinct "Combined MCID Before and After Transition")
-  --from 
-  --    combined_table_15 
+  --from
+  --    combined_table_15
   --where
-  --    "Flat Customers Only (1 if yes)" = 0 
-  --    and   
+  --    "Flat Customers Only (1 if yes)" = 0
+  --    and
   --    "No Diff between UFDM and TAT Prev. Month (1 if yes)" = 0
-  --select 
+  --select
   --
-  --, all_mcid as 
+  --, all_mcid as
   --(
-  --select 
+  --select
   --    distinct "Combined MCID Before and After Transition"
-  --from 
-  --    combined_table_15 
+  --from
+  --    combined_table_15
   --where
-  --    mcid_tat is null 
-  --)
-  --    
-  --, mcid_tat as 
-  --(
-  --select 
-  --    distinct mcid_tat 
-  --from 
-  --    combined_table_15 
+  --    mcid_tat is null
   --)
   --
-  --select 
+  --, mcid_tat as
+  --(
+  --select
+  --    distinct mcid_tat
+  --from
+  --    combined_table_15
+  --)
+  --
+  --select
   --    am."Combined MCID Before and After Transition"
-  --from 
+  --from
   --    all_mcid am
-  --left join 
-  --    mcid_tat mt 
-  --          on 
+  --left join
+  --    mcid_tat mt
+  --          on
   --                mt.mcid_tat = am."Combined MCID Before and After Transition"
-  --where 
-  --    mt.mcid_tat is null 
+  --where
+  --    mt.mcid_tat is null
   --    "Combined MCID Before and After Transition" = '426200e8-ae90-e611-9afb-0050568d2da8'
-  --Prepare ratios for Scenario 1 & 2 
+  --Prepare ratios for Scenario 1 & 2
 ,
   sc1_sc2 as (
     select mcid_arr,
@@ -1527,7 +1525,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       and "No Diff between UFDM and TAT Prev. Month (1 if yes)" = 0
       and mcid_arr is not null
     order by "Combined MCID Before and After Transition"
-  ) --New code for drag ratio 
+  ) --New code for drag ratio
   select mcid_arr,
     "MAX Snapshot Date of TAT",
     product_family_arr,
@@ -1537,8 +1535,8 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
     "Date to Drag Under Scenario 2",
     "Product Family Transition"
   from sc1_sc2
-  where "Ratio of ARR Allocated to PF UFDM ARR" is not null --    and 
+  where "Ratio of ARR Allocated to PF UFDM ARR" is not null --   and mcid_arr = '0033532c-9f42-dd11-93be-0018717a8c82' --    and
     --    mcid_arr = '5e479b1a-2251-e811-813c-70106fa51d21'
-    --order by 
+    --order by
     --    mcid_arr
 );

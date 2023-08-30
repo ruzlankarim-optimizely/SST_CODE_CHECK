@@ -133,8 +133,20 @@ CREATE TABLE sandbox.drag_ratio_with_sku_c2 AS (
     from churn_cust cc
       left join non_fopti_2 nfp2 on cc.mcid = nfp2.mcid
   ) --Now look at UFDM ARR: Check the Non-Fopti Data in UFDM ARR 
-,
-  ufdm_arr_0 as (
+
+
+--Take absolute values 
+	
+,	unbund_arr as 
+	(
+	select 
+		*, 
+		abs(arr_usd_ccfx) as abs_arr_usd_ccfx
+	from 
+		sandbox.arr_unbund
+	)
+
+ ,	ufdm_arr_0 as (
     select distinct mcid,
       snapshot_date,
       product_family,
@@ -145,23 +157,32 @@ CREATE TABLE sandbox.drag_ratio_with_sku_c2 AS (
         product_family,
         sku
       ) as sum_arr_pf,
-      sum(arr_usd_ccfx) over(
+      --Ratios with negative values as well 
+      (sum(abs_arr_usd_ccfx) over(
         partition by mcid,
         snapshot_date,
         product_family,
         sku
       ) / nullif(
-        sum(arr_usd_ccfx) over(partition by mcid, snapshot_date),
+        sum(abs_arr_usd_ccfx) over(partition by mcid, snapshot_date),
         0
-      ) as "Ratio to Each PF",
+      ))*(abs_arr_usd_ccfx/nullif(arr_usd_ccfx,0)) as "Ratio to Each PF",
       sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_ufdm_arr
-    from sandbox.arr_unbund
+    from unbund_arr
     where product_family not in (
         'Full Stack',
         'Web',
         'Recurring: Cloud: Intelligence Cloud: Web Experimentation and Personalization'
       )
   ) --Put a limit on the table to select only customers who have greater than arr > 0 
+  
+--select 
+--	* 
+--from 
+--	ufdm_arr_0 
+--where 
+--	mcid = '43a42cfd-dc29-e011-915e-0018717a8c82'
+  
 ,
   ufdm_arr_1 as (
     select mcid,

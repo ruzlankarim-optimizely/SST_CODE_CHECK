@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION ryzlan.sp_populate_snapshot_sst(var_date date) RETURNS void LANGUAGE plpgsql AS $function$ BEGIN DROP TABLE IF EXISTS tat_static;
+CREATE OR REPLACE FUNCTION ryzlan.sp_populate_snapshot_sst_with_sku(var_date date) RETURNS void LANGUAGE plpgsql AS $function$ BEGIN DROP TABLE IF EXISTS tat_static;
 CREATE TEMP TABLE tat_static AS (
   WITH base AS (
     SELECT tat."customer_name_d&b" AS customer_name_dnb,
@@ -41,8 +41,9 @@ CREATE TEMP TABLE tat_static AS (
         WHEN tat.product_family = 'Full Stack' THEN 'Full Stack' --                 WHEN tat.product_family = 'Web Experimentation and Personalization' THEN 'Web'
         WHEN tat.product_family = 'Perpetual License' THEN '- Not Applicable -' --                 WHEN tat.product_family = 'Campaign' THEN 'Campaign'
         ELSE tat.product_family
-      END AS product_family
-    FROM sandbox.combined_tat tat
+      END AS product_family,
+      tat.sku as sku
+    FROM sandbox.tat_with_sku tat
       LEFT JOIN ufdm_grey.mcid_overrides_manual mp ON mp.mcid_old = tat.mcid
       left join ufdm_grey.sst_dates_lookup_manual c on tat.mcid = c.mcid
     WHERE tat.is_deleted IS DISTINCT
@@ -61,6 +62,7 @@ CREATE TEMP TABLE tat_static AS (
   agg AS (
     SELECT snapshot_date,
       product_family,
+      sku,
       overage_flag,
       mcid,
       currency,
@@ -112,6 +114,7 @@ CREATE TEMP TABLE tat_static AS (
   )
   SELECT snapshot_date,
     product_family,
+    sku,
     overage_flag,
     mcid,
     currency,
@@ -177,6 +180,7 @@ CREATE TEMP TABLE arr_base AS (
     arr_usd_ccfx,
     baseline_arr_local_currency,
     product_family,
+    sku,
     arr_source,
     subsidiary_entity_name,
     legacy_org,
@@ -190,7 +194,7 @@ CREATE TEMP TABLE arr_base AS (
     new_product,
     new_line_of_business,
     new_line_of_business_sub_category
-  FROM sandbox.arr_with_unbundling arr_b
+  FROM sandbox.arr_unbund arr_b
     LEFT JOIN ufdm_grey.mcid_overrides_manual mp ON mp.mcid_old = arr_b.mcid
   WHERE arr_source not ilike '%GMBH overages%'
     AND snapshot_date NOT IN (
@@ -318,6 +322,7 @@ CREATE TEMP TABLE arr_agg AS (
     c_name,
     mcid,
     product_family,
+    sku,
     subsidiary_entity_name,
     baseline_currency,
     fx_rate_ccfx,
@@ -370,7 +375,7 @@ CREATE TEMP TABLE arr_agg AS (
     12,
     13,
     14,
-    15
+    15,16
 );
 DROP TABLE IF EXISTS ufdm_fopti;
 CREATE TEMP TABLE ufdm_fopti AS (
@@ -378,6 +383,7 @@ CREATE TEMP TABLE ufdm_fopti AS (
     c_name,
     mcid,
     product_family,
+    sku,
     subsidiary_entity_name,
     baseline_currency,
     fx_rate_ccfx,
@@ -432,7 +438,7 @@ CREATE TEMP TABLE ufdm_fopti AS (
     12,
     13,
     14,
-    15
+    15,16
 );
 DROP TABLE IF EXISTS tat_agg;
 CREATE TEMP TABLE tat_agg AS (
@@ -456,6 +462,7 @@ CREATE TEMP TABLE tat_agg AS (
     tat.ccfx_date,
     tat.subsidiary_name,
     tat.product_family,
+    tat.sku,
     cd.segment,
     cd.region,
     NULL AS ultimate_parent_id,
@@ -504,6 +511,7 @@ CREATE TEMP TABLE sst_temp AS (
       segment AS segment,
       region AS region,
       product_family AS product_family,
+      sku as sku,
       baseline_currency AS base_currency,
       fx_rate_ccfx AS cc_fx_rate,
       ccfx_date AS fx_date,
@@ -547,6 +555,7 @@ CREATE TEMP TABLE sst_temp AS (
       tat.segment AS segment,
       tat.region AS region,
       product_family,
+      tat.sku as sku,
       tat.currency AS base_currency,
       tat.fx_rate_ccfx AS cc_fx_rate,
       tat.ccfx_date AS fx_date,
@@ -591,6 +600,7 @@ CREATE TEMP TABLE sst_temp AS (
       ufdm.segment AS segment,
       ufdm.region AS region,
       ufdm.product_family AS product_family,
+      ufdm.sku as sku,
       ufdm.baseline_currency AS base_currency,
       ufdm.fx_rate_ccfx AS cc_fx_rate,
       ufdm.ccfx_date AS fx_date,
@@ -632,6 +642,7 @@ CREATE TEMP TABLE sst_temp AS (
       ufdm.segment AS segment,
       ufdm.region AS region,
       ufdm.product_family AS product_family,
+      ufdm.sku as sku,
       ufdm.baseline_currency AS base_currency,
       ufdm.fx_rate_ccfx AS cc_fx_rate,
       ufdm.ccfx_date AS fx_date,
@@ -1104,8 +1115,8 @@ set segment = (
   )
 from avg_total_customer_average as b
 where a.mcid = b.mcid;
-drop table if exists ryzlan.ls_sst;
-create table ryzlan.ls_sst (
+drop table if exists ryzlan.sku_sst;
+create table ryzlan.sku_sst (
   snapshot_date date,
   ultimate_parent_id text,
   ultimate_parent_name text,
@@ -1166,13 +1177,13 @@ create table ryzlan.ls_sst (
 --  base_currency
 --);
 --delete specific snapshot or all snapshots
-delete from ryzlan.ls_sst
+delete from ryzlan.sku_sst
 where (
     snapshot_date = var_date
     and var_date is not null
   )
   or var_date is null;
-insert into ryzlan.ls_sst (
+insert into ryzlan.sku_sst (
     snapshot_date,
     ultimate_parent_id,
     ultimate_parent_name,
@@ -1260,3 +1271,7 @@ where (
   or var_date is null;
 END;
 $function$;
+SELECT ryzlan.sp_populate_snapshot_sst_with_sku(NULL);
+CREATE TABLE sandbox.sst_with_sku_before_manual_changes AS
+SELECT *
+FROM ryzlan.sku_sst;

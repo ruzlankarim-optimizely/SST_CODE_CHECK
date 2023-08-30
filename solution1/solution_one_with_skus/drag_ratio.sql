@@ -21,12 +21,16 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
     select *,
       case
         when strpos(reverse(product_family), ':') = 0 then length(product_family)
-        else strpos(reverse(product_family), ':') -1
+		else strpos(reverse(product_family), ':')-1
       end as num_charac
-    from ufdm.arr
-  ),
-  ufdm_arr_1b as (
-    select mcid,
+from 
+	sandbox.arr_unbund 
+)
+
+,	ufdm_arr_1b as 
+(
+select 
+	mcid,
       snapshot_date,
       arr_usd_ccfx,
       sku,
@@ -43,7 +47,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
   ) --select
   --    distinct arr_source
   --from
-  --    ufdm.arr
+  --    sandbox.arr_unbund
   --where
   --    mcid = '5e479b1a-2251-e811-813c-70106fa51d21'
   --and
@@ -81,9 +85,9 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       ) as "Sum by Product Family,SKU and Date - UFDM ARR",
       sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as "Sum by MCID & Date - UFDM ARR"
     from ufdm_arr_1c
-  ) --We need min. date when the MCID starts
-,
-  ufdm_arr_11 as (
+  ) 
+--We need min. date when the MCID starts
+,ufdm_arr_11 as (
     select mcid_arr,
       product_family_arr,
       sku,
@@ -102,10 +106,11 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
   --    mcid_arr = '003463de-d300-df11-b498-0018717a8c82'
   --Prepare the TAT data
   --Change Content PaaS to Content SaaS
-,
-  tat_0 as (
-    select mcid,
-      date_trunc('MONTH', snapshot_date) as snapshot_date,
+,	tat_0 as 
+(
+select 
+	mcid, 
+	date_trunc('MONTH',snapshot_date) as snapshot_date, 
       arr,
       case
         when product_family = 'Recurring: Cloud: Content Cloud: Content PaaS' then 'Recurring: Cloud: Content Cloud: Content SaaS'
@@ -630,7 +635,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
     SELECT distinct mcid as mcid_welc,
       date_trunc('MONTH', snapshot_date) as snapshot_date_welc,
       '1' AS welcome_historicals
-    FROM ufdm.arr
+    FROM sandbox.arr_unbund
     WHERE reference_number = 'Welcome Historicals'
     ORDER BY 1,
       2
@@ -1526,7 +1531,8 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
       and mcid_arr is not null
     order by "Combined MCID Before and After Transition"
   ) --New code for drag ratio
-  select mcid_arr,
+
+select mcid_arr,
     "MAX Snapshot Date of TAT",
     product_family_arr,
     sku,
@@ -1534,9 +1540,12 @@ CREATE TABLE sandbox.drag_ratio_with_sku AS (
     "Date to Drag to Under Scenario 1",
     "Date to Drag Under Scenario 2",
     "Product Family Transition"
-  from sc1_sc2
-  where "Ratio of ARR Allocated to PF UFDM ARR" is not null --   and mcid_arr = '0033532c-9f42-dd11-93be-0018717a8c82' --    and
-    --    mcid_arr = '5e479b1a-2251-e811-813c-70106fa51d21'
-    --order by
-    --    mcid_arr
+from 
+	sc1_sc2
+where 
+	"Ratio of ARR Allocated to PF UFDM ARR" is not null 
 );
+
+
+			
+

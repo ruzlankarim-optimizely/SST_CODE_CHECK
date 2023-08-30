@@ -1,3 +1,4 @@
+Drop table if exists sandbox.drag_ration_with_sku ;
 CREATE TABLE sandbox.drag_ration_with_sku AS (
   with tat_info as (
     select distinct utu."customer_name_d&b",

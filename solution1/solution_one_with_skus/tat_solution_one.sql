@@ -1,7 +1,10 @@
 -- #######################################################
 -- TAT CODE
 -- #######################################################
-CREATE TABLE sandbox.tat_with_sku_v1_solu_1 as (
+
+
+DROP table sandbox.tat_with_sku;
+CREATE TABLE sandbox.tat_with_sku as (
 with edit_tat as (
   select *
   from ufdm.tat_upload_data tat
@@ -184,7 +187,7 @@ tat_no_change as (
     st7."NS ID",
     st7.subsidiary_name,
     st7.product_family,
-    st7.sku ,
+    sdr2.sku ,
     st7.currency,
     st7.snapshot_date,
     st7.arr,

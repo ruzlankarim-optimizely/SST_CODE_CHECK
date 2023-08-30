@@ -10,7 +10,7 @@ with edit_tat as (
   from ufdm.tat_upload_data tat
   where tat.is_deleted IS DISTINCT
   FROM 1
-    and "Overage Y/N" is distinct
+    and coalesce(nullif(trim(tat."Overage Y/N"), ''), 'N') is distinct
   from 'Y'
     and not (
       date_trunc('month', snapshot_date) = '2021-12-01'::DATE
@@ -21,6 +21,7 @@ tat_change_1 as (
   select distinct mcid,
     snapshot_date,
     product_family,
+    '' as sku,
     currency,
     sum(arr) over(
       partition by mcid,
@@ -49,7 +50,7 @@ tat_change_2 as (
     ) as "ARR:USD CCFX"
   from tat_change_1 tc1
   where arr >= 0
-) --Now take the sandbox.drag_ration table and append ending ARR to 
+) --Now take the sandbox.drag_ration_3 table and append ending ARR to 
 ,
 tat_change_3 as (
   select sdr3."customer_name_d&b",
@@ -73,8 +74,6 @@ tat_change_3 as (
     sdr3.sku,
     sdr3."Original Ratio",
     sdr3."Date to Drag to Under Scenario 1",
-    sdr3."Date to Drag Under Scenario 2",
-    sdr3."Product Family Transition",
     sdr3."New Ratio Per Date for TAT",
     sdr3."Sum of Ratios Per MCID and Snapshot Date",
     tc2."ARR:Local Currency",
@@ -84,19 +83,19 @@ tat_change_3 as (
     and tc2.snapshot_date = sdr3.snapshot_date --For Scenario 1 
   where sdr3.snapshot_date >= sdr3."Date to Drag to Under Scenario 1"::DATE
 ) --select 
---    *
+--	*
 --from 
---    tat_change_3 
+--	tat_change_3 
 --where 
---    mcid = 'd75409e0-c8f2-e711-811d-70106faa0841'
+--	mcid = 'd75409e0-c8f2-e711-811d-70106faa0841'
 --select 
---    *
+--	*
 --from 
---    ufdm.tat_upload_data tud 
+--	ufdm.tat_upload_data tud 
 --where 
---    mcid = '03c69ff6-a949-ea11-a812-000d3a228882'
+--	mcid = '03c69ff6-a949-ea11-a812-000d3a228882'
 --and 
---    date_trunc('MONTH', snapshot_date) = '2021-02-01' 
+--	date_trunc('MONTH', snapshot_date) = '2021-02-01' 
 --This is the final tat to be changed. It has the same structure as original TAT 
 ,
 tat_change_4 as (
@@ -110,7 +109,7 @@ tat_change_4 as (
     tc3."NS ID",
     tc3.subsidiary_name,
     tc3.product_family_arr as product_family,
-    tc3.sku ,
+    tc3.sku,
     --new product family of TAT 
     tc3.currency,
     tc3.snapshot_date,
@@ -129,51 +128,47 @@ tat_change_4 as (
     tc3.modified_comments
   from tat_change_3 tc3
 ) --select 
---    *
+--	*
 --from 
---    tat_change_4 
+--	tat_change_4 
 --where 
---    mcid = 'abf9133d-75e4-e411-9afb-0050568d2da8'
+--	mcid = 'abf9133d-75e4-e411-9afb-0050568d2da8'
 --select 
---    *,
---    sum(arr) over(partition by mcid, snapshot_date) as sum_arr,
---    sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_arr_usd_ccfx
+--	*,
+--	sum(arr) over(partition by mcid, snapshot_date) as sum_arr,
+--	sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_arr_usd_ccfx
 --from 
---    tat_change_4 
+--	tat_change_4 
 --where 
---    mcid = '1f6370ef-dbaf-e311-a1cd-0050568d2da8'
---    and 
---    date_trunc('MONTH', snapshot_date) = '2019-01-01'
+--	mcid = '1f6370ef-dbaf-e311-a1cd-0050568d2da8'
+--	and 
+--	date_trunc('MONTH', snapshot_date) = '2019-01-01'
 --Make sure ending ARRs match 
 --Running Tests 
---,   test_1 as 
---(
---select 
---    distinct mcid as mcid_nt, 
---    snapshot_date as snapshot_date_nt, 
---    sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_new_tat_ccfx,
---    sum(arr) over(partition by mcid, snapshot_date) as sum_new_tat_lc
+,
+test_1 as (
+  select distinct mcid as mcid_nt,
+    snapshot_date as snapshot_date_nt,
+    sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_new_tat_ccfx,
+    sum(arr) over(partition by mcid, snapshot_date) as sum_new_tat_lc
+  from tat_change_4
+) --select 
+--	t1.mcid_nt,
+--	t1.snapshot_date_nt,
+--	t1.sum_new_tat_ccfx,
+--	t1.sum_new_tat_lc, 
+--	tc2."ARR:USD CCFX",
+--	tc2."ARR:Local Currency"
 --from 
---    tat_change_4
---)
---
---select 
---    t1.mcid_nt,
---    t1.snapshot_date_nt,
---    t1.sum_new_tat_ccfx,
---    t1.sum_new_tat_lc, 
---    tc2."ARR:USD CCFX",
---    tc2."ARR:Local Currency"
---from 
---    test_1 t1
+--	test_1 t1
 --inner join 
---    tat_change_2 tc2
---          on 
---                t1.mcid_nt = tc2.mcid
---                and 
---                t1.snapshot_date_nt = tc2.snapshot_date 
+--	tat_change_2 tc2
+--		on 
+--			t1.mcid_nt = tc2.mcid
+--			and 
+--			t1.snapshot_date_nt = tc2.snapshot_date 
 --where 
---    abs(tc2."ARR:USD CCFX"-t1.sum_new_tat_ccfx) > 1
+--	abs(tc2."ARR:USD CCFX"-t1.sum_new_tat_ccfx) > 1
 --Now union to TAT that does not change. Take all the mcids and dates that are not present in sandbox ratio
 ,
 tat_no_change as (
@@ -187,7 +182,7 @@ tat_no_change as (
     st7."NS ID",
     st7.subsidiary_name,
     st7.product_family,
-    sdr2.sku ,
+    st7.sku,
     st7.currency,
     st7.snapshot_date,
     st7.arr,
@@ -201,30 +196,7 @@ tat_no_change as (
     left join sandbox.drag_ration_with_sku sdr2 on st7.mcid = sdr2.mcid
     and st7.snapshot_date = sdr2.snapshot_date --For Scenario 1 
   where sdr2.mcid is null
-) --select 
---    *
---from 
---    tat_no_change 
---where 
---    mcid = '819e438e-610b-e111-9d3b-0050568d002c'
---and 
---    date_trunc('MONTH', snapshot_date) = '2021-12-01'
---Tests: Use this mcid 
---select 
---    *
---from 
---    tat_no_change 
---where 
---    mcid = '0059ab5d-4608-c5a9-57f7-0d4b79c42cba'
---order by 
---    snapshot_date 
---select 
---    *
---from 
---    sandbox.drag_ration_3 dr 
---where 
---    mcid = '0059ab5d-4608-c5a9-57f7-0d4b79c42cba'
---Now union the 2 tables 
+) --Now union the 2 tables 
 ,
 combined_table_1 as (
   (
@@ -238,8 +210,8 @@ combined_table_1 as (
       tc4."NS ID",
       tc4.subsidiary_name,
       tc4.product_family,
-      tc4.sku , 
       --new product family of TAT 
+      tc4.sku,
       tc4.currency,
       tc4.snapshot_date,
       tc4.arr,
@@ -265,7 +237,7 @@ combined_table_1 as (
       tcn."NS ID",
       tcn.subsidiary_name,
       tcn.product_family,
-      tcn.sku , 
+      tcn.sku,
       tcn.currency,
       tcn.snapshot_date,
       tcn.arr,
@@ -278,9 +250,9 @@ combined_table_1 as (
     from tat_no_change tcn
   )
 ) --select 
---    *
+--	*
 --from 
---    combined_table_1
+--	combined_table_1
 ,
 new_prod_tat as (
   select ct1."customer_name_d&b",
@@ -293,7 +265,7 @@ new_prod_tat as (
     ct1."NS ID",
     ct1.subsidiary_name,
     ct1.product_family,
-    ct1.sku ,
+    ct1.sku,
     ct1.currency,
     ct1.snapshot_date,
     ct1.arr,
@@ -306,47 +278,9 @@ new_prod_tat as (
   from combined_table_1 ct1
   order by ct1.mcid,
     ct1.snapshot_date
-) --New TAT table: Sol 1
+) --New TAT Table: Solution 1 for Cohort 2
 --
 select *
 from new_prod_tat
-
 );
--- where mcid = 'd75409e0-c8f2-e711-811d-70106faa0841' --select 
-  --    distinct mcid,
-  --    snapshot_date,
-  --    sum(arr_usd_ccfx) as sum_a,
-  --    sum(arr) as sum_b
-  --from 
-  --    new_prod_tat
-  --where 
-  --    mcid = '1f6370ef-dbaf-e311-a1cd-0050568d2da8'
-  --    and 
-  --    date_trunc('MONTH', snapshot_date) = '2019-01-01'
-  --group by 
-  --    1,2
-  --select 
-  --    count(distinct snapshot_date)
-  --from 
-  --    with edit_tat as  tud 
-  --Test: Take ARR by MCID and Date of Combined_Table and compare to old TAT. It should match 
-  --
--- ,
---   test_1 as (
---     select distinct mcid as mcid_nt,
---       snapshot_date as snapshot_date_nt,
---       sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_new_tat_ccfx,
---       sum(arr) over(partition by mcid, snapshot_date) as sum_new_tat_lc
---     from combined_table_1 --where 
---       --    is_DELETED = 0 
---   )
--- select t1.mcid_nt,
---   t1.snapshot_date_nt,
---   t1.sum_new_tat_ccfx,
---   t1.sum_new_tat_lc,
---   tc2."ARR:USD CCFX",
---   tc2."ARR:Local Currency"
--- from test_1 t1
---   inner join tat_change_2 tc2 on t1.mcid_nt = tc2.mcid
---   and t1.snapshot_date_nt = tc2.snapshot_date
 -- where abs(tc2."ARR:USD CCFX" - t1.sum_new_tat_ccfx) > 1

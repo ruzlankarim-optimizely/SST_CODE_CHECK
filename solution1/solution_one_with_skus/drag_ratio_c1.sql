@@ -1,5 +1,5 @@
-drop table if exists sandbox.drag_ratio_with_sku;
-CREATE TABLE sandbox.drag_ratio_with_sku AS (
+drop table if exists sandbox.drag_ratio_with_sku_c1;
+CREATE TABLE sandbox.drag_ratio_with_sku_c1 AS (
   with tat_dates as (
     select distinct mcid,
       max(date_trunc('MONTH', snapshot_date)) over(partition by mcid, record_source) as "MAX Snapshot Date of TAT"

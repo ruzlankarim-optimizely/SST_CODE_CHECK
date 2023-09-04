@@ -1,1188 +1,322 @@
-CREATE OR REPLACE FUNCTION ryzlan.sp_populate_snapshot_sst_with_sku(var_date date) RETURNS void LANGUAGE plpgsql AS $function$ BEGIN DROP TABLE IF EXISTS tat_static;
-CREATE TEMP TABLE tat_static AS (
-  WITH base AS (
-    SELECT tat."customer_name_d&b" AS customer_name_dnb,
-      NULLIF(TRIM(tat.parent_customer), '') AS parent_customer,
-      tat.parent_master_customer_id,
-      -- NULL
-      NULL::text AS parent_customer_ns_id,
-      NULLIF(TRIM(tat.customer_name), '') AS customer_name,
-      NULLIF(TRIM(tat.end_customer), '') AS end_customer,
-      NULL::text AS end_customer_master_customer_id,
-      NULL::text AS end_customer_ns_id,
-      COALESCE(mp.mcid_new, NULLIF(TRIM(tat.mcid), '')) AS mcid,
-      COALESCE(NULLIF(TRIM(tat."Overage Y/N"), ''), 'N') AS overage_flag,
-      NULLIF(TRIM(tat."NS ID"), '') AS ns_id,
-      tat.currency,
-      (
-        DATE_TRUNC('month', tat.snapshot_date) + interval '1 month' - interval '1 day'
-      )::DATE AS snapshot_date,
-      COALESCE(tat.arr, 0) as arr,
-      tat.fx_rate_ccfx,
-      COALESCE(tat.arr_usd_ccfx, 0) as arr_usd_ccfx,
-      tat.ccfx_date,
-      CASE
-        WHEN tat.subsidiary_name = 'Idio Inc.' THEN 'Idio Inc'
-        ELSE tat.subsidiary_name
-      END AS subsidiary_name,
-      CASE
-        WHEN tat.product_family = 'B2B Commerce (incl. Headless)' THEN 'Recurring: Cloud: Commerce Cloud: B2B Commerce (incl. Headless)'
-        WHEN tat.product_family = 'B2C Commerce (incl. Headless)' THEN 'Recurring: Cloud: Commerce Cloud: B2C Commerce (incl. Headless)'
-        WHEN tat.product_family = 'Content PaaS' THEN 'Recurring: Cloud: Content Cloud: Content PaaS'
-        WHEN tat.product_family = 'CDP (incl. Visitor Intelligence)' THEN 'Recurring: Cloud: Intelligence Cloud: CDP (incl. Visitor Intelligence)'
-        WHEN tat.product_family = 'Content Recommendations (incl. E-mail)' THEN 'Recurring: Cloud: Intelligence Cloud: Content Recommendations (incl. E-mail)'
-        WHEN tat.product_family = 'Product Recommendations (incl. E-mail)' THEN 'Recurring: Cloud: Intelligence Cloud: Product Recommendations (incl. E-mail)'
-        WHEN tat.product_family = 'Web Experimentation and Personalization' THEN 'Recurring: Cloud: Intelligence Cloud: Web Experimentation and Personalization'
-        WHEN tat.product_family = 'Campaign' THEN 'Recurring: Cloud: Other Bookings: Campaign'
-        WHEN tat.product_family = 'Other' THEN 'Recurring: Cloud: Other Bookings: Other Bookings'
-        WHEN tat.product_family = 'Welcome' THEN 'Recurring: Intelligence Cloud: Marketing Orchestration'
-        WHEN tat.product_family = 'Subscription License' THEN 'Recurring: Subscription License'
-        WHEN tat.product_family = 'Perpetual License' THEN 'Non-Recurring: Perpetual License'
-        WHEN tat.product_family = 'Full Stack' THEN 'Full Stack' --                 WHEN tat.product_family = 'Web Experimentation and Personalization' THEN 'Web'
-        WHEN tat.product_family = 'Perpetual License' THEN '- Not Applicable -' --                 WHEN tat.product_family = 'Campaign' THEN 'Campaign'
-        ELSE tat.product_family
-      END AS product_family,
-      tat.sku as sku
-    FROM sandbox.tat_with_sku tat
-      LEFT JOIN ufdm_grey.mcid_overrides_manual mp ON mp.mcid_old = tat.mcid
-      left join ufdm_grey.sst_dates_lookup_manual c on tat.mcid = c.mcid
-    WHERE tat.is_deleted IS DISTINCT
-    FROM 1 --          and COALESCE(NULLIF(TRIM(tat."Overage Y/N"), ''), 'N') is distinct
-      --            from 'N'
-      and (
-        c.mcid is null
-        or (
-          c.mcid is not null
-          and (
-            date_trunc('month', tat.snapshot_date::date) + interval '1 month' - interval '1 day'
-          )::date < c.date_for_switching_from_arr
-        )
-      )
-  ),
-  agg AS (
-    SELECT snapshot_date,
-      product_family,
-      sku,
-      overage_flag,
-      mcid,
-      currency,
-      parent_customer,
-      customer_name_dnb,
-      parent_master_customer_id,
-      -- NULL
-      parent_customer_ns_id,
-      customer_name,
-      end_customer,
-      end_customer_master_customer_id,
-      end_customer_ns_id,
-      ns_id,
-      arr,
-      fx_rate_ccfx,
-      arr_usd_ccfx,
-      ccfx_date,
-      subsidiary_name,
-      GREATEST(
-        0,
-        SUM(arr_usd_ccfx) OVER (
-          PARTITION BY snapshot_date,
-          product_family,
-          overage_flag,
-          mcid,
-          currency
-        )
-      ) AS total_arr_usd_ccfx,
-      GREATEST(
-        0,
-        SUM(arr) OVER (
-          PARTITION BY snapshot_date,
-          product_family,
-          overage_flag,
-          mcid,
-          currency
-        )
-      ) AS total_arr,
-      ROW_NUMBER() OVER (
-        PARTITION BY snapshot_date,
-        product_family,
-        overage_flag,
-        mcid,
-        currency
-        ORDER BY arr_usd_ccfx DESC,
-          ns_id
-      ) AS ranking
-    FROM base
-  )
-  SELECT snapshot_date,
-    product_family,
-    sku,
-    overage_flag,
-    mcid,
-    currency,
-    parent_customer,
-    customer_name_dnb,
-    parent_master_customer_id,
-    -- NULL
-    parent_customer_ns_id,
-    customer_name,
-    end_customer,
-    end_customer_master_customer_id,
-    end_customer_ns_id,
-    ns_id,
-    total_arr AS arr,
-    fx_rate_ccfx,
-    total_arr_usd_ccfx AS arr_usd_ccfx,
-    ccfx_date,
-    subsidiary_name
-  FROM agg
-  WHERE ranking = 1
-);
-UPDATE tat_static ts
-SET parent_customer = COALESCE(ts.parent_customer, ts.customer_name),
-  parent_customer_ns_id = ts.ns_id,
-  parent_master_customer_id = ts.mcid
-WHERE ts.end_customer IS NULL
-  AND ts.customer_name IS NOT NULL;
-DROP TABLE IF EXISTS arr_base;
-CREATE TEMP TABLE arr_base AS (
-  WITH dates AS (
-    SELECT DISTINCT snapshot_date
-    FROM ufdm.arr
-    WHERE snapshot_date > '2022-12-31'
-  ),
-  dates_rank AS (
-    SELECT snapshot_date,
-      DENSE_RANK() OVER (
-        PARTITION BY DATE_TRUNC('month', snapshot_date)
-        ORDER BY snapshot_date desc
-      ) AS ranking
-    FROM dates
-  )
-  SELECT (
-      DATE_TRUNC('month', snapshot_date) + interval '1 month' - interval '1 day'
-    )::DATE as snapshot_date,
-    NULLIF(TRIM(arr_b.c_name), '') AS c_name,
-    NULLIF(TRIM(parent_customer_ns_id), '') AS parent_customer_ns_id,
-    NULLIF(TRIM(end_customer_ns_id), '') AS end_customer_ns_id,
-    NULLIF(TRIM(parent_customer), '') AS parent_customer,
-    NULLIF(TRIM(end_customer), '') AS end_customer,
-    NULLIF(TRIM(parent_master_customer_id), '') AS parent_master_customer_id,
-    NULLIF(TRIM(end_customer_master_customer_id), '') AS end_customer_master_customer_id,
-    COALESCE(mp.mcid_new, NULLIF(TRIM(arr_b.mcid), '')) AS mcid,
-    CASE
-      WHEN arr_source = 'GMBH overages' THEN 'Y'
-      ELSE 'N'
-    END as overage_flag,
-    line_type,
-    baseline_currency,
-    subsidiary_base_currency,
-    ccfx_date,
-    fx_rate_ccfx,
-    arr_usd_ccfx,
-    baseline_arr_local_currency,
-    product_family,
-    sku,
-    arr_source,
-    subsidiary_entity_name,
-    legacy_org,
-    --NULLIF(TRIM(mcid), '') AS mcid,
-    created_date,
-    modified_date,
-    reference_number,
-    new_product_solution,
-    new_product_line,
-    updated_product_group,
-    new_product,
-    new_line_of_business,
-    new_line_of_business_sub_category
-  FROM sandbox.arr_unbund arr_b
-    LEFT JOIN ufdm_grey.mcid_overrides_manual mp ON mp.mcid_old = arr_b.mcid
-  WHERE arr_source not ilike '%GMBH overages%'
-    AND snapshot_date NOT IN (
-      SELECT snapshot_date
-      FROM dates_rank
-      WHERE ranking > 1
-    )
-);
-UPDATE arr_base
-SET end_customer_ns_id = NULLIF(
-    TRIM(
-      SUBSTRING(
-        SUBSTRING(
-          end_customer,
-          POSITION(' : C' in end_customer) + 3
-        ),
-        0,
-        POSITION(
-          ' ' in SUBSTRING(
-            end_customer,
-            POSITION(' : C' in end_customer) + 3
-          )
-        )
-      )
-    ),
-    ''
-  )
-WHERE end_customer like 'C%: C%';
-DROP TABLE IF EXISTS customer_detail;
-CREATE TEMP TABLE customer_detail AS (
-  WITH base AS (
-    SELECT sf_guid_c AS mcid,
-      "name",
-      territory_c,
-      number_of_employees,
-      id,
-      duns_number_c,
-      is_deleted,
-      last_modified_date,
-      2 AS rank
-    FROM opti_salesforce.account
-    WHERE sf_guid_c IS NOT NULL
-    UNION
-    SELECT dynamics_id_c AS mcid,
-      "name",
-      territory_c,
-      number_of_employees,
-      id,
-      duns_number_c,
-      is_deleted,
-      last_modified_date,
-      1 AS rank
-    FROM opti_salesforce.account
-    WHERE dynamics_id_c IS NOT NULL
-  )
-  SELECT DISTINCT ON (e.mcid) e.mcid AS epi_universal_id,
-    e."name",
-    duns_number_c AS duns_id,
-    e.id,
-    CASE
-      WHEN e.number_of_employees > 1499 THEN 'Enterprise'
-      WHEN e.number_of_employees < 1500 THEN 'Mid-Market'
-      WHEN e.number_of_employees IS NULL THEN 'N/A'
-      ELSE 'N/A'
-    END AS segment,
-    CASE
-      WHEN t."name" LIKE '%NA%' THEN 'North America'
-      WHEN t."name" LIKE '%North%America%' THEN 'North America'
-      WHEN t."name" LIKE '%EMEA%' THEN 'EMEA'
-      WHEN t."name" LIKE '%Europe%' THEN 'EMEA'
-      WHEN t."name" LIKE '%Sweden%' THEN 'EMEA'
-      WHEN t."name" LIKE '%UK%' THEN 'EMEA'
-      WHEN t."name" LIKE '%ANZ%' THEN 'APAC'
-      WHEN t."name" LIKE '%APJ%' THEN 'APAC'
-      WHEN t."name" LIKE '%DACH%' THEN 'DACH'
-      ELSE NULL
-    END AS region
-  FROM base e
-    LEFT JOIN opti_salesforce.territory_c t ON e.territory_c = t.id
-    AND t.is_deleted IS DISTINCT
-  FROM TRUE
-  ORDER BY e.mcid,
-    e.rank,
-    e.is_deleted,
-    e.last_modified_date DESC
-);
-DROP TABLE IF EXISTS ns_id_master_customer_id_map;
-CREATE TEMP TABLE ns_id_master_customer_id_map AS
-SELECT DISTINCT TRIM(name) AS ns_id,
-  TRIM(master_customer_id) AS mcid
-FROM epi_netsuite.companies
-WHERE NULLIF(TRIM(name), '') IS NOT NULL
-  AND NULLIF(TRIM(master_customer_id), '') IS NOT null;
-UPDATE arr_base
-SET mcid = COALESCE(
-    NULLIF(end_customer_master_customer_id, ''),
-    NULLIF(parent_master_customer_id, '')
-  )
-where nullif(trim(mcid), '') is null;
-DROP TABLE IF EXISTS dnb_accounts;
-CREATE TEMP TABLE dnb_accounts AS (
-  WITH base AS (
-    SELECT NULLIF(TRIM(da."Master Customer ID"), '') AS master_customer_id,
-      NULLIF(TRIM(da."D-U-N-S Number"::TEXT), '') AS duns_number,
-      da.db_name AS db_name,
-      da1.db_name AS parent_db_name,
-      NULLIF(TRIM(da.db_domesticultimatedunsnumber::TEXT), '') AS db_domesticultimatedunsnumber,
-      NULLIF(TRIM(da.db_globalultimatedunsnumber::TEXT), '') AS db_globalultimatedunsnumber,
-      NULLIF(TRIM(da.db_parentdunsnumber::TEXT), '') as db_parentdunsnumber
-    FROM dnb_data.all_accounts_20230323 da
-      LEFT JOIN dnb_data.all_accounts_20230323 da1 ON da1."D-U-N-S Number" = da.db_parentdunsnumber
-  )
-  SELECT DISTINCT ON (master_customer_id) master_customer_id,
-    db_name,
-    parent_db_name,
-    duns_number::TEXT AS duns_number,
-    db_domesticultimatedunsnumber::TEXT AS db_domesticultimatedunsnumber,
-    db_globalultimatedunsnumber::TEXT AS db_globalultimatedunsnumber,
-    db_parentdunsnumber::TEXT AS db_parentdunsnumber
-  FROM base
-);
-DROP TABLE IF EXISTS arr_agg;
-CREATE TEMP TABLE arr_agg AS (
-  SELECT snapshot_date,
-    c_name,
-    mcid,
-    product_family,
-    sku,
-    subsidiary_entity_name,
-    baseline_currency,
-    fx_rate_ccfx,
-    ccfx_date,
-    overage_flag,
-    new_product_solution,
-    new_product_line,
-    updated_product_group,
-    new_product,
-    new_line_of_business,
-    new_line_of_business_sub_category,
-    NULL AS ultimate_parent_name,
-    NULL AS ultimate_parent_id,
-    max(up1.duns_number)::TEXT AS duns_number,
-    max(up1.db_name) AS duns_name,
-    max(up1.db_parentdunsnumber)::TEXT AS parent_duns_number,
-    max(up1.parent_db_name) AS parent_duns_name,
-    max(up1.db_domesticultimatedunsnumber)::TEXT AS domesticultimatedunsnumber,
-    max(up1.db_globalultimatedunsnumber)::TEXT AS globalultimatedunsnumber,
-    max(parent_master_customer_id) AS parent_master_customer_id,
-    max(parent_customer_ns_id) AS parent_customer_nsid,
-    max(parent_customer) AS parent_customer_name,
-    max(end_customer_master_customer_id) AS end_master_customer_id,
-    max(end_customer_ns_id) AS end_customer_nsid,
-    max(end_customer) AS end_customer_name,
-    max(cd.name) AS customer_name,
-    max(cd.segment) AS segment,
-    max(cd.region) AS region,
-    sum(arr_usd_ccfx) AS arr_usd_ccfx,
-    sum(baseline_arr_local_currency) AS baseline_arr_local_currency,
-    min(created_date) AS min_created_date,
-    max(modified_date) AS max_modified_date,
-    max(cd1.id) as parent_sf_id,
-    max(cd1.name) as parent_sf_name
-  FROM arr_base arrb
-    LEFT JOIN customer_detail cd ON cd.epi_universal_id = arrb.mcid
-    LEFT JOIN customer_detail cd1 ON cd1.epi_universal_id = arrb.parent_master_customer_id
-    LEFT JOIN dnb_accounts up1 ON up1.master_customer_id = arrb.mcid
-  GROUP BY 1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,16
-);
-DROP TABLE IF EXISTS ufdm_fopti;
-CREATE TEMP TABLE ufdm_fopti AS (
-  SELECT snapshot_date,
-    c_name,
-    mcid,
-    product_family,
-    sku,
-    subsidiary_entity_name,
-    baseline_currency,
-    fx_rate_ccfx,
-    ccfx_date,
-    overage_flag,
-    new_product_solution,
-    new_product_line,
-    updated_product_group,
-    new_product,
-    new_line_of_business,
-    new_line_of_business_sub_category,
-    NULL AS ultimate_parent_name,
-    NULL AS ultimate_parent_id,
-    max(up1.duns_number)::TEXT AS duns_number,
-    max(up1.db_name) AS duns_name,
-    max(up1.db_parentdunsnumber)::TEXT AS parent_duns_number,
-    max(up1.parent_db_name) AS parent_duns_name,
-    max(up1.db_domesticultimatedunsnumber)::TEXT AS domesticultimatedunsnumber,
-    max(up1.db_globalultimatedunsnumber)::TEXT AS globalultimatedunsnumber,
-    max(parent_master_customer_id) AS parent_master_customer_id,
-    max(parent_customer_ns_id) AS parent_customer_nsid,
-    max(parent_customer) AS parent_customer_name,
-    max(end_customer_master_customer_id) AS end_master_customer_id,
-    max(end_customer_ns_id) AS end_customer_nsid,
-    max(end_customer) AS end_customer_name,
-    max(cd.name) AS customer_name,
-    max(cd.segment) AS segment,
-    max(cd.region) AS region,
-    sum(arr_usd_ccfx) AS arr_usd_ccfx,
-    sum(baseline_arr_local_currency) AS baseline_arr_local_currency,
-    min(created_date) AS min_created_date,
-    max(modified_date) AS max_modified_date,
-    max(cd1.id) as parent_sf_id,
-    max(cd1.name) as parent_sf_name
-  FROM arr_base arr
-    LEFT JOIN customer_detail cd ON cd.epi_universal_id = arr.mcid
-    LEFT JOIN customer_detail cd1 ON cd1.epi_universal_id = arr.parent_master_customer_id
-    LEFT JOIN dnb_accounts up1 ON up1.master_customer_id = arr.mcid
-  WHERE arr.snapshot_date < '2022-01-01'::DATE
-    AND line_type ILIKE '%Fopti%'
-  GROUP BY 1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,16
-);
-DROP TABLE IF EXISTS tat_agg;
-CREATE TEMP TABLE tat_agg AS (
-  SELECT tat.customer_name_dnb,
-    tat.parent_customer,
-    tat.parent_master_customer_id,
-    -- NULL
-    tat.parent_customer_ns_id,
-    tat.customer_name,
-    tat.end_customer,
-    tat.end_customer_master_customer_id,
-    tat.end_customer_ns_id,
-    tat.mcid,
-    tat.overage_flag,
-    tat.ns_id,
-    tat.currency,
-    tat.snapshot_date,
-    tat.arr,
-    tat.fx_rate_ccfx,
-    tat.arr_usd_ccfx,
-    tat.ccfx_date,
-    tat.subsidiary_name,
-    tat.product_family,
-    tat.sku,
-    cd.segment,
-    cd.region,
-    NULL AS ultimate_parent_id,
-    NULL AS ultimate_parent_name,
-    up.db_name AS duns_name,
-    up.duns_number::TEXT AS duns_number,
-    up.parent_db_name AS parent_duns_name,
-    up.db_parentdunsnumber::TEXT AS parent_duns_number,
-    up.db_domesticultimatedunsnumber::TEXT AS domesticultimatedunsnumber,
-    up.db_globalultimatedunsnumber::TEXT AS globalultimatedunsnumber,
-    cd.name AS parent_sf_name,
-    cd.id AS parent_sf_id
-  FROM tat_static tat
-    LEFT JOIN customer_detail cd ON cd.epi_universal_id = tat.mcid
-    LEFT JOIN dnb_accounts up ON up.master_customer_id = tat.mcid
-);
-DROP TABLE IF EXISTS sst_temp;
-CREATE TEMP TABLE sst_temp AS (
-  WITH ufdm_campaigns_dec2021 AS (
-    SELECT snapshot_date,
-      ultimate_parent_id AS ultimate_parent_id,
-      ultimate_parent_name AS ultimate_parent_name,
-      duns_name,
-      duns_number,
-      parent_duns_name,
-      parent_duns_number,
-      domesticultimatedunsnumber,
-      globalultimatedunsnumber,
-      new_product_solution,
-      new_product_line,
-      updated_product_group,
-      new_product,
-      new_line_of_business,
-      new_line_of_business_sub_category,
-      c_name AS c_name,
-      parent_customer_nsid AS parent_ns_id,
-      end_customer_nsid AS end_ns_id,
-      customer_name AS name,
-      parent_customer_name AS parent_name,
-      end_customer_name AS end_name,
-      mcid AS mcid,
-      parent_master_customer_id AS parent_mcid,
-      end_master_customer_id AS end_mcid,
-      subsidiary_entity_name AS subsidiary_entity_name,
-      overage_flag AS overage_flag,
-      segment AS segment,
-      region AS region,
-      product_family AS product_family,
-      sku as sku,
-      baseline_currency AS base_currency,
-      fx_rate_ccfx AS cc_fx_rate,
-      ccfx_date AS fx_date,
-      arr_usd_ccfx AS arr,
-      baseline_arr_local_currency AS baseline_arr_local_currency,
-      max_modified_date AS dw_modified_date,
-      min_created_date AS dw_created_date,
-      parent_sf_id,
-      parent_sf_name
-    FROM arr_agg
-    WHERE date_trunc('month', snapshot_date) = '2021-12-01'::DATE
-      AND product_family = 'Recurring: Cloud: Other Bookings: Campaign'
-  ),
-  sst_tat AS (
-    SELECT snapshot_date,
-      ultimate_parent_id AS ultimate_parent_id,
-      ultimate_parent_name AS ultimate_parent_name,
-      duns_name,
-      duns_number,
-      parent_duns_name,
-      parent_duns_number,
-      domesticultimatedunsnumber,
-      globalultimatedunsnumber,
-      NULL AS new_product_solution,
-      NULL AS new_product_line,
-      NULL AS updated_product_group,
-      NULL AS new_product,
-      NULL AS new_line_of_business,
-      NULL AS new_line_of_business_sub_category,
-      tat.ns_id AS c_name,
-      tat.ns_id AS parent_ns_id,
-      NULL AS end_ns_id,
-      tat.customer_name AS name,
-      tat.parent_customer AS parent_name,
-      NULL AS end_name,
-      tat.mcid AS mcid,
-      tat.mcid AS parent_mcid,
-      NULL AS end_mcid,
-      tat.subsidiary_name AS subsidiary_entity_name,
-      overage_flag,
-      tat.segment AS segment,
-      tat.region AS region,
-      product_family,
-      tat.sku as sku,
-      tat.currency AS base_currency,
-      tat.fx_rate_ccfx AS cc_fx_rate,
-      tat.ccfx_date AS fx_date,
-      tat.arr_usd_ccfx AS arr,
-      tat.arr AS baseline_arr_local_currency,
-      NULL::DATE AS dw_modified_date,
-      NULL::DATE AS dw_created_date,
-      parent_sf_id,
-      parent_sf_name
-    FROM tat_agg tat
-    WHERE DATE_TRUNC('month', tat.snapshot_date) != '2021-12-01'::DATE
-      OR product_family IS DISTINCT
-    FROM 'Recurring: Cloud: Other Bookings: Campaign'
-  ),
-  ufdm_fopti_pre_2022 AS (
-    SELECT snapshot_date,
-      ultimate_parent_id AS ultimate_parent_id,
-      ultimate_parent_name AS ultimate_parent_name,
-      duns_name,
-      duns_number,
-      parent_duns_name,
-      parent_duns_number,
-      domesticultimatedunsnumber,
-      globalultimatedunsnumber,
-      new_product_solution,
-      new_product_line,
-      updated_product_group,
-      new_product,
-      new_line_of_business,
-      new_line_of_business_sub_category,
-      ufdm.c_name AS c_name,
-      ufdm.parent_customer_nsid AS parent_ns_id,
-      ufdm.end_customer_nsid AS end_ns_id,
-      ufdm.customer_name AS name,
-      ufdm.parent_customer_name AS parent_name,
-      ufdm.end_customer_name AS end_name,
-      ufdm.mcid AS mcid,
-      ufdm.parent_master_customer_id AS parent_mcid,
-      ufdm.end_master_customer_id AS end_mcid,
-      ufdm.subsidiary_entity_name AS subsidiary_entity_name,
-      ufdm.overage_flag AS overage_flag,
-      ufdm.segment AS segment,
-      ufdm.region AS region,
-      ufdm.product_family AS product_family,
-      ufdm.sku as sku,
-      ufdm.baseline_currency AS base_currency,
-      ufdm.fx_rate_ccfx AS cc_fx_rate,
-      ufdm.ccfx_date AS fx_date,
-      ufdm.arr_usd_ccfx AS arr,
-      ufdm.baseline_arr_local_currency AS baseline_arr_local_currency,
-      ufdm.max_modified_date AS dw_modified_date,
-      ufdm.min_created_date AS dw_created_date,
-      parent_sf_id,
-      parent_sf_name
-    from ufdm_fopti ufdm
-  ),
-  ufdm_2022 AS (
-    SELECT snapshot_date,
-      ultimate_parent_id AS ultimate_parent_id,
-      ultimate_parent_name AS ultimate_parent_name,
-      duns_name,
-      duns_number,
-      parent_duns_name,
-      parent_duns_number,
-      domesticultimatedunsnumber,
-      globalultimatedunsnumber,
-      new_product_solution,
-      new_product_line,
-      updated_product_group,
-      new_product,
-      new_line_of_business,
-      new_line_of_business_sub_category,
-      ufdm.c_name AS c_name,
-      ufdm.parent_customer_nsid AS parent_ns_id,
-      ufdm.end_customer_nsid AS end_ns_id,
-      ufdm.customer_name AS name,
-      ufdm.parent_customer_name AS parent_name,
-      ufdm.end_customer_name AS end_name,
-      ufdm.mcid AS mcid,
-      ufdm.parent_master_customer_id AS parent_mcid,
-      ufdm.end_master_customer_id AS end_mcid,
-      ufdm.subsidiary_entity_name AS subsidiary_entity_name,
-      ufdm.overage_flag AS overage_flag,
-      ufdm.segment AS segment,
-      ufdm.region AS region,
-      ufdm.product_family AS product_family,
-      ufdm.sku as sku,
-      ufdm.baseline_currency AS base_currency,
-      ufdm.fx_rate_ccfx AS cc_fx_rate,
-      ufdm.ccfx_date AS fx_date,
-      ufdm.arr_usd_ccfx AS arr,
-      ufdm.baseline_arr_local_currency AS baseline_arr_local_currency,
-      ufdm.max_modified_date AS dw_modified_date,
-      ufdm.min_created_date AS dw_created_date,
-      parent_sf_id,
-      parent_sf_name
-    FROM arr_agg ufdm
-      left join ufdm_grey.sst_dates_lookup_manual c on ufdm.mcid = c.mcid
-    WHERE 1 = 1
-      and (
-        (
-          c.mcid is null
-          and ufdm.snapshot_date > '2021-12-31'::DATE
-        )
-        or (
-          c.mcid is not null
-          and ufdm.snapshot_date >= c.date_for_switching_from_arr
-        )
-      )
-  ),
-  sst AS (
-    SELECT *,
-      'sst_tat' as record_source
-    FROM sst_tat
-    UNION ALL
-    SELECT *,
-      'ufdm_campaigns_dec2021' as record_source
-    FROM ufdm_campaigns_dec2021
-    UNION ALL
-    SELECT *,
-      'ufdm_fopti_pre_2022' as record_source
-    FROM ufdm_fopti_pre_2022
-    UNION ALL
-    SELECT *,
-      'ufdm_2022' as record_source
-    FROM ufdm_2022
-  )
-  SELECT *
-  FROM sst
-);
--- deduping fopti items from SST table
-DROP TABLE IF EXISTS fopti_dupes;
-CREATE TEMP TABLE fopti_dupes as (
-  WITH fopti AS (
-    SELECT s.c_name,
-      s.mcid,
-      s.snapshot_date,
-      s.product_family,
-      s.subsidiary_entity_name
-    FROM sst_temp s
-    WHERE s.subsidiary_entity_name ilike '%fopti%'
-  ),
-  non_fopti AS (
-    SELECT s.c_name,
-      s.mcid,
-      s.snapshot_date,
-      s.product_family,
-      s.subsidiary_entity_name
-    FROM sst_temp s
-    WHERE s.subsidiary_entity_name not ilike '%fopti%'
-  )
-  SELECT f.c_name,
-    f.mcid,
-    f.snapshot_date,
-    f.product_family,
-    f.subsidiary_entity_name as f_sub,
-    nf.subsidiary_entity_name nf_sub
-  FROM fopti f
-    INNER JOIN non_fopti nf ON f.c_name = nf.c_name
-    AND f.mcid = nf.mcid
-    AND f.snapshot_date = nf.snapshot_date
-    AND f.product_family = nf.product_family
-    AND f.subsidiary_entity_name ilike '%fopti%'
-);
-DELETE FROM sst_temp s USING fopti_dupes fd
-WHERE s.c_name = fd.c_name
-  AND s.mcid = fd.mcid
-  AND s.snapshot_date = fd.snapshot_date
-  AND s.product_family = fd.product_family
-  AND s.subsidiary_entity_name = fd.f_sub;
-/*
- SST CORRECTIONS
- */
-DELETE FROM sst_temp s USING ufdm_grey.sst_corrections st
-WHERE st.to_delete IS TRUE
-  AND (
-    st.match_cname IS DISTINCT
-    FROM TRUE
-      OR st.match_val_cname IS NOT DISTINCT
-    FROM s.c_name
-  )
-  AND (
-    st.match_parent_ns_id IS DISTINCT
-    FROM TRUE
-      OR st.match_val_parent_ns_id IS NOT DISTINCT
-    FROM s.parent_ns_id
-  )
-  AND (
-    st.match_product_family IS DISTINCT
-    FROM TRUE
-      OR st.match_val_product_family IS NOT DISTINCT
-    FROM s.product_family
-  )
-  AND (
-    st.match_snapshot_date IS DISTINCT
-    FROM TRUE
-      OR st.match_val_snapshot_date IS NOT DISTINCT
-    FROM s.snapshot_date
-  )
-  AND (
-    st.match_overage_flag IS DISTINCT
-    FROM TRUE
-      OR st.match_val_overage_flag IS NOT DISTINCT
-    FROM s.overage_flag
-  )
-  AND (
-    st.match_subsidiary_entity_name IS DISTINCT
-    FROM TRUE
-      OR st.match_val_subsidiary_entity_name IS NOT DISTINCT
-    FROM s.subsidiary_entity_name
-  )
-  AND (
-    st.match_base_currency IS DISTINCT
-    FROM TRUE
-      OR st.match_val_base_currency IS NOT DISTINCT
-    FROM s.base_currency
-  );
-WITH tmp_update AS (
-  SELECT COALESCE(st.c_name, s.c_name) AS c_name,
-    COALESCE(st.parent_ns_id, s.parent_ns_id) AS parent_ns_id,
-    COALESCE(st.end_ns_id, s.end_ns_id) AS end_ns_id,
-    COALESCE(st."name", s."name") AS name,
-    COALESCE(st.parent_name, s.parent_name) AS parent_name,
-    COALESCE(st.end_name, s.end_name) AS end_name,
-    COALESCE(
-      COALESCE(nm1.mcid, st.end_mcid, s.end_mcid),
-      COALESCE(nm.mcid, st.parent_mcid, s.parent_mcid)
-    ) AS mcid,
-    COALESCE(nm.mcid, st.parent_mcid, s.parent_mcid) AS parent_mcid,
-    COALESCE(nm1.mcid, st.end_mcid, s.end_mcid) AS end_mcid,
-    COALESCE(
-      st.subsidiary_entity_name,
-      s.subsidiary_entity_name
-    ) AS subsidiary_entity_name,
-    COALESCE(st.overage_flag, s.overage_flag) AS overage_flag,
-    COALESCE(st.product_family, s.product_family) AS product_family,
-    COALESCE(st.base_currency, s.base_currency) AS base_currency,
-    COALESCE(st.cc_fx_rate, s.cc_fx_rate) AS cc_fx_rate,
-    COALESCE(st.fx_date, s.fx_date) AS fx_date,
-    COALESCE(st.arr, s.arr) AS arr,
-    COALESCE(
-      st.baseline_arr_local_currency,
-      s.baseline_arr_local_currency
-    ) AS baseline_arr_local_currency,
-    dnb.db_name AS duns_name,
-    dnb.duns_number AS duns_number,
-    dnb.parent_db_name AS parent_duns_name,
-    dnb.db_parentdunsnumber AS parent_duns_number,
-    dnb.db_domesticultimatedunsnumber AS domesticultimatedunsnumber,
-    dnb.db_globalultimatedunsnumber AS globalultimatedunsnumber,
-    cd.segment AS segment,
-    cd.region AS region,
-    cd1.epi_universal_id AS parent_sf_id,
-    cd1.name AS parent_sf_name,
-    st.match_cname,
-    st.match_val_cname,
-    st.match_parent_ns_id,
-    st.match_val_parent_ns_id,
-    st.match_product_family,
-    st.match_val_product_family,
-    st.match_snapshot_date,
-    st.match_val_snapshot_date,
-    st.match_overage_flag,
-    st.match_val_overage_flag,
-    st.match_subsidiary_entity_name,
-    st.match_val_subsidiary_entity_name,
-    st.match_base_currency,
-    st.match_val_base_currency
-  FROM sst_temp s
-    JOIN ufdm_grey.sst_corrections st ON (
-      st.to_merge IS TRUE
-      AND (
-        st.match_cname IS DISTINCT
-        FROM TRUE
-          OR st.match_val_cname IS NOT DISTINCT
-        FROM s.c_name
-      )
-      AND (
-        st.match_parent_ns_id IS DISTINCT
-        FROM TRUE
-          OR st.match_val_parent_ns_id IS NOT DISTINCT
-        FROM s.parent_ns_id
-      )
-      AND (
-        st.match_product_family IS DISTINCT
-        FROM TRUE
-          OR st.match_val_product_family IS NOT DISTINCT
-        FROM s.product_family
-      )
-      AND (
-        st.match_snapshot_date IS DISTINCT
-        FROM TRUE
-          OR st.match_val_snapshot_date IS NOT DISTINCT
-        FROM s.snapshot_date
-      )
-      AND (
-        st.match_overage_flag IS DISTINCT
-        FROM TRUE
-          OR st.match_val_overage_flag IS NOT DISTINCT
-        FROM s.overage_flag
-      )
-      AND (
-        st.match_subsidiary_entity_name IS DISTINCT
-        FROM TRUE
-          OR st.match_val_subsidiary_entity_name IS NOT DISTINCT
-        FROM s.subsidiary_entity_name
-      )
-      AND (
-        st.match_base_currency IS DISTINCT
-        FROM TRUE
-          OR st.match_val_base_currency IS NOT DISTINCT
-        FROM s.base_currency
-      )
-    )
-    LEFT JOIN ns_id_master_customer_id_map nm ON nm.ns_id = COALESCE(st.parent_ns_id, s.parent_ns_id)
-    LEFT JOIN ns_id_master_customer_id_map nm1 ON nm1.ns_id = COALESCE(st.end_ns_id, s.end_ns_id)
-    LEFT JOIN customer_detail cd ON cd.epi_universal_id = COALESCE(
-      COALESCE(nm1.mcid, st.end_mcid, s.end_mcid),
-      COALESCE(nm.mcid, st.parent_mcid, s.parent_mcid)
-    )
-    LEFT JOIN customer_detail cd1 ON cd1.epi_universal_id = COALESCE(nm.mcid, st.parent_mcid, s.parent_mcid)
-    LEFT JOIN dnb_accounts dnb ON dnb.master_customer_id = COALESCE(
-      COALESCE(nm1.mcid, st.end_mcid, s.end_mcid),
-      COALESCE(nm.mcid, st.parent_mcid, s.parent_mcid)
-    )
-)
-UPDATE sst_temp s
-SET c_name = tmp.c_name,
-  parent_ns_id = tmp.parent_ns_id,
-  end_ns_id = tmp.end_ns_id,
-  name = tmp."name",
-  parent_name = tmp.parent_name,
-  end_name = tmp.end_name,
-  mcid = tmp.mcid,
-  parent_mcid = tmp.parent_mcid,
-  end_mcid = tmp.end_mcid,
-  subsidiary_entity_name = tmp.subsidiary_entity_name,
-  overage_flag = tmp.overage_flag,
-  product_family = tmp.product_family,
-  base_currency = tmp.base_currency,
-  cc_fx_rate = tmp.cc_fx_rate,
-  fx_date = tmp.fx_date,
-  arr = tmp.arr,
-  baseline_arr_local_currency = tmp.baseline_arr_local_currency,
-  duns_name = tmp.duns_name,
-  duns_number = tmp.duns_number,
-  parent_duns_name = tmp.parent_duns_name,
-  parent_duns_number = tmp.parent_duns_number,
-  domesticultimatedunsnumber = tmp.domesticultimatedunsnumber,
-  globalultimatedunsnumber = tmp.globalultimatedunsnumber,
-  segment = tmp.segment,
-  region = tmp.region,
-  parent_sf_id = tmp.parent_sf_id,
-  parent_sf_name = tmp.parent_sf_name
-FROM tmp_update tmp
-WHERE (
-    tmp.match_cname IS DISTINCT
-    FROM TRUE
-      OR tmp.match_val_cname IS NOT DISTINCT
-    FROM s.c_name
-  )
-  AND (
-    tmp.match_parent_ns_id IS DISTINCT
-    FROM TRUE
-      OR tmp.match_val_parent_ns_id IS NOT DISTINCT
-    FROM s.parent_ns_id
-  )
-  AND (
-    tmp.match_product_family IS DISTINCT
-    FROM TRUE
-      OR tmp.match_val_product_family IS NOT DISTINCT
-    FROM s.product_family
-  )
-  AND (
-    tmp.match_snapshot_date IS DISTINCT
-    FROM TRUE
-      OR tmp.match_val_snapshot_date IS NOT DISTINCT
-    FROM s.snapshot_date
-  )
-  AND (
-    tmp.match_overage_flag IS DISTINCT
-    FROM TRUE
-      OR tmp.match_val_overage_flag IS NOT DISTINCT
-    FROM s.overage_flag
-  )
-  AND (
-    tmp.match_subsidiary_entity_name IS DISTINCT
-    FROM TRUE
-      OR tmp.match_val_subsidiary_entity_name IS NOT DISTINCT
-    FROM s.subsidiary_entity_name
-  )
-  AND (
-    tmp.match_base_currency IS DISTINCT
-    FROM TRUE
-      OR tmp.match_val_base_currency IS NOT DISTINCT
-    FROM s.base_currency
-  );
-INSERT INTO sst_temp (
-    snapshot_date,
-    c_name,
-    parent_ns_id,
-    end_ns_id,
-    "name",
-    parent_name,
-    end_name,
-    mcid,
-    parent_mcid,
-    end_mcid,
-    subsidiary_entity_name,
-    overage_flag,
-    product_family,
-    base_currency,
-    cc_fx_rate,
-    fx_date,
-    arr,
-    baseline_arr_local_currency,
-    duns_name,
-    duns_number,
-    parent_duns_name,
-    parent_duns_number,
-    domesticultimatedunsnumber,
-    globalultimatedunsnumber,
-    segment,
-    region,
-    parent_sf_id,
-    parent_sf_name
-  ) (
-    SELECT st.snapshot_date,
-      st.c_name,
-      st.parent_ns_id,
-      st.end_ns_id,
-      st."name",
-      st.parent_name,
-      st.end_name,
-      COALESCE(nm1.mcid, nm.mcid),
-      nm.mcid,
-      nm1.mcid,
-      st.subsidiary_entity_name,
-      st.overage_flag,
-      st.product_family,
-      st.base_currency,
-      st.cc_fx_rate,
-      st.fx_date,
-      st.arr,
-      st.baseline_arr_local_currency,
-      dnb.db_name,
-      dnb.duns_number,
-      dnb.parent_db_name,
-      dnb.db_parentdunsnumber,
-      dnb.db_domesticultimatedunsnumber,
-      dnb.db_globalultimatedunsnumber,
-      cd.segment,
-      cd.region,
-      cd1.epi_universal_id,
-      cd1.name
-    FROM ufdm_grey.sst_corrections st
-      LEFT JOIN ns_id_master_customer_id_map nm ON nm.ns_id = st.parent_ns_id
-      LEFT JOIN ns_id_master_customer_id_map nm1 ON nm1.ns_id = st.end_ns_id
-      LEFT JOIN customer_detail cd ON cd.epi_universal_id = COALESCE(nm1.mcid, nm.mcid)
-      LEFT JOIN customer_detail cd1 ON cd1.epi_universal_id = nm.mcid
-      LEFT JOIN dnb_accounts dnb ON dnb.master_customer_id = COALESCE(nm1.mcid, nm.mcid)
-    WHERE st.to_insert IS TRUE
-  );
-UPDATE sst_temp s
-SET base_currency = sc."MISSING CURR CODE",
-  cc_fx_rate = sc."LC AMOUNT RATE",
-  baseline_arr_local_currency = s.arr / sc."LC AMOUNT RATE"
-FROM ufdm_grey.sst_currency_corrections sc
-WHERE sc."NS ID" = s.c_name
-  AND sc.mcid = s.mcid
-  AND (
-    NULLIF(TRIM(s.base_currency), '') IS NULL
-    OR s.baseline_arr_local_currency IS NULL
-    OR s.cc_fx_rate IS NULL
-  );
-WITH base AS (
-  SELECT snapshot_date,
-    mcid
-  FROM sst_temp
-  GROUP BY snapshot_date,
-    mcid
-  HAVING sum(arr) < 50.0
-)
-UPDATE sst_temp st
-SET arr = 0,
-  baseline_arr_local_currency = 0
-FROM base b
-WHERE st.snapshot_date = b.snapshot_date
-  AND st.mcid = b.mcid;
--------------------- Adding logic for sst region and segment -------
----changing region for only null regions
-Update sst_temp
-set region = (
-    Case
-      when subsidiary_entity_name in ('Episerver AB', 'Opti AB', 'Optimizely AB') then 'EMEA'
-      when subsidiary_entity_name = 'Episerver GmbH' then 'EMEA'
-      when subsidiary_entity_name = 'Episerver Inc.' then 'North America'
-      when subsidiary_entity_name in ('Episerver UK Ltd (formerly Peerius Ltd)') then 'EMEA'
-      when subsidiary_entity_name = 'Idio Inc' then 'EMEA'
-      when subsidiary_entity_name = 'Idio Inc.' then 'EMEA'
-      when subsidiary_entity_name = 'Idio Ltd' then 'EMEA'
-      when subsidiary_entity_name in(
-        'Insite Hosting Services',
-        'Opti NA (2)',
-        'Optimizely North America Inc (2)'
-      ) then 'EMEA'
-      when subsidiary_entity_name in(
-        'Insite Inc',
-        'Opti NA (4)',
-        'Optimizely North America Inc (4)'
-      ) then 'North America'
-      when subsidiary_entity_name in(
-        'Optimizely Inc',
-        'Fopti',
-        'FOpti',
-        'Optimizely Operations Inc',
-        'Opti NA (3)',
-        'Optimizely North America Inc (3)'
-      ) then 'North America'
-      when subsidiary_entity_name in(
-        'Welcome',
-        'Welcome Inc.',
-        'Opti NA (6)',
-        'Optimizely North America Inc (6)'
-      ) then 'North America'
-      when subsidiary_entity_name in(
-        'Zaius',
-        'Opti NA (5)',
-        'Optimizely North America Inc (5)'
-      ) then 'North America'
-      when subsidiary_entity_name in('Optimizely North America Inc') then 'North America'
-    end
-  )
-where (
-    region is null
-    or region = ''
-    or region = 'NA-DS'
-    or region = 'Unassigned'
-  );
----changing segments ----
-with avg_total_customer_average as (
-  select mcid,
-    avg(arr) as average_arr
-  from sst_temp
-  where mcid is not null
-    and mcid <> '-'
-    and mcid <> ''
-    and snapshot_date >= '2019-01-01'
-  group by 1
-)
-update sst_temp as a
-set segment = (
-    case
-      when b.average_arr >= 100000 then 'Enterprise'
-      else 'Mid-Market'
-    end
-  )
-from avg_total_customer_average as b
-where a.mcid = b.mcid;
-drop table if exists ryzlan.sku_sst;
-create table ryzlan.sku_sst (
-  snapshot_date date,
-  ultimate_parent_id text,
-  ultimate_parent_name text,
-  duns_name text,
-  duns_number text,
-  parent_duns_name text,
-  parent_duns_number text,
-  domesticultimatedunsnumber text,
-  globalultimatedunsnumber text,
-  new_product_solution text,
-  new_product_line text,
-  updated_product_group text,
-  new_product text,
-  new_line_of_business text,
-  new_line_of_business_sub_category text,
-  c_name text,
-  parent_ns_id text,
-  end_ns_id text,
-  name text,
-  parent_name text,
-  end_name text,
-  mcid text,
-  parent_mcid text,
-  end_mcid text,
-  subsidiary_entity_name text,
-  overage_flag text,
-  segment text,
-  region text,
-  product_family text,
-  base_currency text,
-  cc_fx_rate double precision,
-  fx_date date,
-  arr double precision,
-  baseline_arr_local_currency double precision,
-  dw_modified_date timestamp,
-  dw_created_date timestamp default CURRENT_TIMESTAMP,
-  parent_sf_id varchar,
-  parent_sf_name varchar,
-  record_source text,
-  modified_comments text,
-  cohort_actions text,
-  id serial primary key
-);
---create index nci_sst_prod_snapshot_date on sandbox_pd.sst_prod (snapshot_date);
---create index nci_sst_prod_snapshot_date_mcid_pf on sandbox_pd.sst_prod (snapshot_date, mcid, product_family);
---create index nci_sst_prod_snapshot_date_mcid_pg on sandbox_pd.sst_prod (snapshot_date, mcid, updated_product_group);
---create index nci_sst_prod_snapshot_date_mcid_ps on sandbox_pd.sst_prod (snapshot_date, mcid, new_product_solution);
---create index nci_sst_prod_snapshot_date_mcid_pg_bc on sandbox_pd.sst_prod (
---  snapshot_date,
---  mcid,
---  updated_product_group,
---  base_currency
---);
---create index nci_sst_prod_snapshot_date_mcid_ps_bc on sandbox_pd.sst_prod (
---  snapshot_date,
---  mcid,
---  new_product_solution,
---  base_currency
---);
---delete specific snapshot or all snapshots
+CREATE OR REPLACE FUNCTION ryzlan.sp_populate_sst_updates_manual_after_sensitivity_analysis_with_() RETURNS void LANGUAGE plpgsql AS $function$ BEGIN
 delete from ryzlan.sku_sst
-where (
-    snapshot_date = var_date
-    and var_date is not null
+WHERE 1 = 1
+  and base_currency IS NOT NULL --and mcid = '7434e983-09b5-db11-8952-0018717a8c82' and snapshot_date ='2020-07-31'
+  AND coalesce(ARR, 0) < 0
+  and baseline_arr_local_currency < 0;
+---##########################################
+--APPLY SHELL CUSTOMER FIXES
+---##########################################
+update ryzlan.sku_sst
+set arr = '218333.33',
+  baseline_arr_local_currency = '218333.33',
+  modified_comments = concat(
+    coalesce(modified_comments, ''),
+    '==> arr and lcu updated from ',
+    arr::text
+  ) --select * from ryzlan.sku_sst
+where mcid = '8ef0bf48-f16c-72ce-6356-41f25b5aaaf2'
+  and snapshot_date between '2022-09-30' and '2022-09-30'
+  and arr > 0
+  and arr <> '218333.33';
+update ryzlan.sku_sst
+set arr = '218333.33',
+  baseline_arr_local_currency = '218333.33',
+  modified_comments = concat(
+    coalesce(modified_comments, ''),
+    '==> arr and lcu updated from ',
+    arr::text
+  ) --select * from ryzlan.sku_sst
+where mcid = '8ef0bf48-f16c-72ce-6356-41f25b5aaaf2'
+  and snapshot_date between '2022-10-31' and '2022-12-31'
+  and arr > 0
+  and arr <> '218333.33';
+update ryzlan.sku_sst
+set arr = '252333.33',
+  baseline_arr_local_currency = '252333.33',
+  modified_comments = concat(
+    coalesce(modified_comments, ''),
+    '==> arr and lcu updated from ',
+    arr::text
+  ) --select * from ryzlan.sku_sst
+where mcid = '8ef0bf48-f16c-72ce-6356-41f25b5aaaf2'
+  and snapshot_date between '2023-01-31' and '2023-06-30'
+  and arr > 0
+  and arr <> '252333.33';
+---##########################################
+--UPDATE baseline vs arr discrepencies
+---##########################################
+update ryzlan.sku_sst a
+set baseline_arr_local_currency = (a.arr / b.fx_rate),
+  modified_comments = concat(
+    coalesce(modified_comments, ';'),
+    'lcu update from ',
+    baseline_arr_local_currency::Text,
+    ' to ',
+    (a.arr / b.fx_rate)::Text
   )
-  or var_date is null;
+from (
+    select trans_cur,
+      fx_rate
+    from ufdm_grey.arr_fx_rates
+    where fx_type = 'ccfx'
+  ) b --select * from ryzlan.sku_sst a, (select trans_cur,fx_rate from ufdm_grey.arr_fx_rates where fx_type = 'ccfx') b
+where a.base_currency = b.trans_cur
+  and coalesce(a.arr, 0) - (
+    coalesce(a.baseline_arr_local_currency, 0) * b.fx_rate
+  ) not between -1 and 1;
+---##########################################
+-- update product group and product solution based on SKU
+---##########################################
+/*
+ SELECT a.snapshot_date,a.sku, count(*)
+ --distinct a.sku,a.new_product,a.new_product_solution,a.new_line_of_business,a.new_product_line,a.updated_product_group,tmjs.*
+ FROM ryzlan.sku_sst a
+ LEFT JOIN ufdm_grey.product_hierarchy_mappings tmjs ON tmjs."Product Code" = a.sku
+ where a.new_product is null
+ group by a.snapshot_date,a.sku
+ ;
+ 
+ SELECT distinct a.sku,a.new_product,a.new_product_solution,a.new_line_of_business,a.new_product_line,a.updated_product_group,tmjs.*
+ FROM ryzlan.sku_sst a
+ LEFT JOIN ufdm_grey.product_hierarchy_mappings tmjs ON tmjs."Product Code" = a.sku
+ where a.updated_product_group is null
+ ;
+ */
+update ryzlan.sku_sst a
+set new_product = null,
+  updated_product_group = null,
+  new_product_line = null,
+  new_product_solution = null,
+  new_line_of_business = null,
+  new_line_of_business_sub_category = null,
+  modified_comments = concat(
+    coalesce(modified_comments, ''),
+    '==> new_product_hierarchy columns updated to blank for fopti'
+  ) --select distinct a.sku,a.product_family,a.new_product,a.new_product_solution,a.new_line_of_business,a.new_product_line,a.updated_product_group,record_source from ryzlan.sku_sst a
+WHERE 1 = 1
+  and product_family in ('Full Stack', 'Web')
+  and updated_product_group is not null;
+update ryzlan.sku_sst a
+set new_product = tmjs."NEW: Product",
+  updated_product_group = tmjs."Updated: Product Group",
+  new_product_line = tmjs."NEW:  Product Line",
+  new_product_solution = tmjs."NEW: Product Solution",
+  new_line_of_business = tmjs."NEW: Line of Business",
+  new_line_of_business_sub_category = tmjs."NEW: Line of Business Subcategory",
+  modified_comments = concat(
+    coalesce(modified_comments, ''),
+    '==> new_product_hierarchy columns updated from blank based on SKU'
+  )
+FROM ufdm_grey.product_hierarchy_mappings tmjs
+WHERE tmjs."Product Code" = a.sku
+  AND a.updated_product_group is null;
+---##########################################
+-- update product group and product solution based on new mapping tables
+---##########################################
+drop table if exists tmp_pf_split;
+create temporary table tmp_pf_split as
+select a.snapshot_date,
+  ultimate_parent_id,
+  ultimate_parent_name,
+  duns_name,
+  duns_number,
+  parent_duns_name,
+  parent_duns_number,
+  domesticultimatedunsnumber,
+  globalultimatedunsnumber,
+  new_product_solution,
+  new_product_line,
+  b.pg_mapping_1 as updated_product_group,
+  new_product,
+  new_line_of_business,
+  new_line_of_business_sub_category,
+  c_name,
+  parent_ns_id,
+  end_ns_id,
+  name,
+  parent_name,
+  end_name,
+  mcid,
+  parent_mcid,
+  end_mcid,
+  subsidiary_entity_name,
+  overage_flag,
+  segment,
+  region,
+  a.product_family,
+  base_currency,
+  cc_fx_rate,
+  fx_date,
+  arr,
+  baseline_arr_local_currency,
+  arr * (b.pg_arr_percentage::numeric) as arr_new,
+  baseline_arr_local_currency * (b.pg_arr_percentage::numeric) as baseline_arr_local_currency_new,
+  dw_modified_date,
+  dw_created_date,
+  parent_sf_id,
+  parent_sf_name,
+  record_source,
+  modified_comments,
+  cohort_actions,
+  id,
+  pg_mapping_1,
+  pg_arr_percentage,
+  subsidairy
+from ryzlan.sku_sst a
+  cross join ufdm_grey.sst_product_family_porduct_group_mappings_manual b
+where a.product_family = b.product_family
+  and a.product_family in (
+    'Recurring: Cloud: Other Bookings: Other Bookings'
+  )
+  and (coalesce(updated_product_group, '') = '')
+  and coalesce(arr, 0) > 0
+union all
+select a.snapshot_date,
+  ultimate_parent_id,
+  ultimate_parent_name,
+  duns_name,
+  duns_number,
+  parent_duns_name,
+  parent_duns_number,
+  domesticultimatedunsnumber,
+  globalultimatedunsnumber,
+  new_product_solution,
+  new_product_line,
+  b.pg_mapping_1 as updated_product_group,
+  new_product,
+  new_line_of_business,
+  new_line_of_business_sub_category,
+  c_name,
+  parent_ns_id,
+  end_ns_id,
+  name,
+  parent_name,
+  end_name,
+  mcid,
+  parent_mcid,
+  end_mcid,
+  subsidiary_entity_name,
+  overage_flag,
+  segment,
+  region,
+  a.product_family,
+  base_currency,
+  cc_fx_rate,
+  fx_date,
+  arr,
+  baseline_arr_local_currency,
+  arr * (b.pg_arr_percentage::numeric) as arr_new,
+  baseline_arr_local_currency * (b.pg_arr_percentage::numeric) as baseline_arr_local_currency_new,
+  dw_modified_date,
+  dw_created_date,
+  parent_sf_id,
+  parent_sf_name,
+  record_source,
+  modified_comments,
+  cohort_actions,
+  id,
+  pg_mapping_1,
+  pg_arr_percentage,
+  subsidairy
+from ryzlan.sku_sst a
+  cross join ufdm_grey.sst_product_family_porduct_group_mappings_manual b
+where a.product_family = b.product_family
+  and a.product_family in (
+    'Recurring: Subscription License',
+    'Non-Recurring: Perpetual License'
+  )
+  and (coalesce(updated_product_group, '') = '')
+  and coalesce(arr, 0) > 0
+  and coalesce(a.subsidiary_entity_name, '') ilike '%insite%'
+  and b.subsidairy = 'Insite'
+union all
+select a.snapshot_date,
+  ultimate_parent_id,
+  ultimate_parent_name,
+  duns_name,
+  duns_number,
+  parent_duns_name,
+  parent_duns_number,
+  domesticultimatedunsnumber,
+  globalultimatedunsnumber,
+  new_product_solution,
+  new_product_line,
+  b.pg_mapping_1 as updated_product_group,
+  new_product,
+  new_line_of_business,
+  new_line_of_business_sub_category,
+  c_name,
+  parent_ns_id,
+  end_ns_id,
+  name,
+  parent_name,
+  end_name,
+  mcid,
+  parent_mcid,
+  end_mcid,
+  subsidiary_entity_name,
+  overage_flag,
+  segment,
+  region,
+  a.product_family,
+  base_currency,
+  cc_fx_rate,
+  fx_date,
+  arr,
+  baseline_arr_local_currency,
+  arr * (b.pg_arr_percentage::numeric) as arr_new,
+  baseline_arr_local_currency * (b.pg_arr_percentage::numeric) as baseline_arr_local_currency_new,
+  dw_modified_date,
+  dw_created_date,
+  parent_sf_id,
+  parent_sf_name,
+  record_source,
+  modified_comments,
+  cohort_actions,
+  id,
+  pg_mapping_1,
+  pg_arr_percentage,
+  subsidairy
+from ryzlan.sku_sst a
+  cross join ufdm_grey.sst_product_family_porduct_group_mappings_manual b
+where a.product_family = b.product_family
+  and a.product_family in (
+    'Recurring: Subscription License',
+    'Non-Recurring: Perpetual License'
+  )
+  and (coalesce(updated_product_group, '') = '')
+  and coalesce(arr, 0) > 0
+  and coalesce(a.subsidiary_entity_name, '') not ilike '%insite%'
+  and b.subsidairy = 'Not Insite';
+--update 1 to 1 mappings
+update ryzlan.sku_sst a
+set updated_product_group = b.pg_mapping_1,
+  modified_comments = concat(
+    coalesce(modified_comments, ''),
+    '==> updated_product_group updated from blank'
+  )
+from ufdm_grey.sst_product_family_porduct_group_mappings_manual b
+where 1 = 1
+  and a.product_family = b.product_family
+  and (coalesce(updated_product_group, '') = '')
+  and coalesce(arr, 0) > 0
+  and a.product_family not in (
+    'Recurring: Cloud: Other Bookings: Other Bookings',
+    'Recurring: Subscription License',
+    'Non-Recurring: Perpetual License'
+  );
+--delete multi product group records
+delete from ryzlan.sku_sst a
+where 1 = 1
+  and (coalesce(updated_product_group, '') = '')
+  and coalesce(arr, 0) > 0
+  and a.product_family in (
+    'Recurring: Cloud: Other Bookings: Other Bookings',
+    'Recurring: Subscription License',
+    'Non-Recurring: Perpetual License'
+  );
+--insert split records
 insert into ryzlan.sku_sst (
     snapshot_date,
     ultimate_parent_id,
@@ -1222,7 +356,9 @@ insert into ryzlan.sku_sst (
     dw_created_date,
     parent_sf_id,
     parent_sf_name,
-    record_source
+    record_source,
+    modified_comments,
+    cohort_actions
   )
 select snapshot_date,
   ultimate_parent_id,
@@ -1256,22 +392,220 @@ select snapshot_date,
   base_currency,
   cc_fx_rate,
   fx_date,
-  arr,
-  baseline_arr_local_currency,
+  arr_new,
+  baseline_arr_local_currency_new,
   dw_modified_date,
-  current_timestamp as dw_created_date,
+  dw_created_date,
   parent_sf_id,
   parent_sf_name,
-  record_source
-from sst_temp
-where (
-    snapshot_date = var_date
-    and var_date is not null
+  record_source,
+  concat(
+    coalesce(modified_comments, ''),
+    '; updated product group changed from null to ',
+    updated_product_group,
+    case
+      when subsidairy = 'Not Insite'
+      or product_family in (
+        'Recurring: Cloud: Other Bookings: Other Bookings'
+      ) then concat(
+        '; arr updated from ',
+        arr::Text,
+        ' to ',
+        arr_new::text,
+        '; baseline_arr_local_currency updated from ',
+        baseline_arr_local_currency::Text,
+        ' to ',
+        baseline_arr_local_currency_new::text
+      )
+      else ''
+    end
+  ) as modified_comments,
+  cohort_actions
+from tmp_pf_split;
+--finally update product solution based on product group mappings
+/*
+ select distinct a.updated_product_group,b.*
+ from sandbox_pd.sst_pg_pf_updates a
+ join ufdm_grey.sst_product_group_porduct_solution_mappings_manual b
+ on a.updated_product_group = b.product_group
+ where 1=1 and (coalesce(new_product_solution,'') = '')
+ and coalesce(arr,0) > 0
+ ;
+ */
+update ryzlan.sku_sst a
+set new_product_solution = b.product_solution,
+  modified_comments = concat(
+    coalesce(modified_comments, ''),
+    '==> new_product_solution updated from blank'
   )
-  or var_date is null;
+from ufdm_grey.sst_product_group_porduct_solution_mappings_manual b
+where 1 = 1
+  and a.updated_product_group = b.product_group
+  and (coalesce(new_product_solution, '') = '')
+  and coalesce(arr, 0) > 0;
+--
+delete --select arr,baseline_arr_local_currency,sku,product_family,*
+from ryzlan.sku_sst
+where 1 = 1
+  and snapshot_date between '2021-01-31' and '2021-07-31'
+  and mcid = '5a8496b5-17ed-06d0-9cf9-664634366539'
+  and (
+    (
+      sku = 'CLCO2-PVPP'
+      and arr > 17000
+    )
+    or (
+      sku = 'CLCO2'
+      and arr < 90000
+    )
+  );
+--     delete
+--         --select arr,baseline_arr_local_currency,sku,product_family,*
+--     from ryzlan.sku_sst
+--     where 1=1
+--       and snapshot_date between '2021-01-31' and '2021-01-31'
+--       and mcid = '6e2dddfc-4f35-837f-6912-ed2b9bc5dab0'
+--       and ( (sku = 'CLCO2-PVPP' and arr > 17000) or (sku = 'CLCO2' and arr < 90000))
+--     ;
+drop table if exists tmp_mcid_mappings_vamsi;
+create temp table tmp_mcid_mappings_vamsi as
+select '9c3d7c94-4fcf-25c3-8f32-bfcdb1c4135e' as mcid_new,
+  '2205022046' as mcid_old
+union all
+select '4b37b7f8-9989-ddf2-f483-70981c90d9ff',
+  '577690255'
+union all
+select 'b20aa31e-b447-90ed-39dc-c462f797c4b0',
+  '226558773'
+union all
+select '88d24466-8dd5-d2f4-1188-fb4ad9848829',
+  '300527710'
+union all
+select '3131b01a-1eaa-db11-8952-0018717a8c82',
+  'da86f6ba-8c01-e411-a67d-0050568d2da8'
+union all
+select '75ed44e1-a3ce-bd51-f03a-b0fcb5932aee',
+  '3212741224'
+union all
+select 'f56678df-f192-bb48-a8c9-6cbfab90cdc7',
+  '2002000414'
+union all
+select '174f4865-a8c2-35d5-1785-c03775b3c4b9',
+  '2839070157'
+union all
+select '79753210-8c38-ac0c-87ba-372b81a43902',
+  '10155050976'
+union all
+select 'ecccdfa3-8444-b1db-9af8-b662824397cb',
+  '10205350479'
+union all
+select '2b716d30-8c9b-45a6-7f27-c32cb711666b',
+  '12259010309'
+union all
+select '516af03e-6b40-fa4b-eed3-94cf018265fc',
+  '12373912567'
+union all
+select '88ac9cdf-bc80-c476-29cb-fc09edd690f1',
+  '13230780019'
+union all
+select '44e143ba-7840-1493-f226-9685bdfa219f',
+  '1809350501'
+union all
+select 'abf09198-59ad-e5ba-a004-1eba2ee117e7',
+  '19950585'
+union all
+select '02bf49cc-f681-1efa-b544-70fd8c217838',
+  '2002000089'
+union all
+select 'ac3a3278-e9c1-e611-80f1-fc15b426ff90',
+  '222ed82b-53b1-e211-9907-0050568d002c'
+union all
+select '72d16811-4c77-5078-f5a0-570b39a4b348',
+  '2562510400'
+union all
+select '48fc0e42-8a9e-0c29-0127-a3fb732470b9',
+  '3261430067'
+union all
+select 'ee6c7b56-8355-001e-5e6d-87394854c174',
+  '3736420181'
+union all
+select 'e3b0258f-48a3-7a38-cef7-45bffee0ad42',
+  '3744411361'
+union all
+select '255a8bfe-e122-4ea9-6df2-a654cf50e696',
+  '3848171733'
+union all
+select 'd677f73e-a24f-3492-160a-5e272a7dd8f1',
+  '4666041069'
+union all
+select '49e1b7db-d1f0-f776-4106-e73ee5d5e82e',
+  '4758484551'
+union all
+select 'cd37a35a-7e8f-df11-a236-0018717a8c82',
+  '4c977ce6-9246-ac3b-23fa-dc711e5e651f'
+union all
+select 'badebfef-e93c-21f6-c852-72f6759e722b',
+  '5444685741'
+union all
+select '49f9a9f0-b8b3-c26d-5c3f-6c2013762dd9',
+  '5763640713'
+union all
+select '34d0b34a-4bfc-7bdf-07d4-3c83f691a99d',
+  '6131884851'
+union all
+select 'a9dae5d9-1aa8-c763-79d4-89697d3e7f31',
+  '7766623933'
+union all
+select '5aa442dc-03bf-59d4-8fb2-7fb270d7cd3b',
+  '7955584735'
+union all
+select '06e9e8c6-b263-d2f9-8e0b-9da3fc37f793',
+  '8081092737'
+union all
+select '44fc1d48-d3ee-e8e2-3caa-87b09f8bfb0d',
+  '8091130321'
+union all
+select 'a9055dda-27c7-1497-3bf5-f05e287a438c',
+  '8342874567'
+union all
+select 'eab47761-4870-b6e5-8d40-420ab18a648f',
+  '8442657002'
+union all
+select 'a0dd5276-385e-084e-5d1e-5dbfd3ce2074',
+  '8443856239'
+union all
+select 'e52847a0-5887-17bc-4d6b-c0ff19e59cb6',
+  '9414726664'
+union all
+select '977f1355-4133-80e2-eb64-9f355f644334',
+  '9859685907'
+union all
+select '2a664eb7-cff0-8532-9b1f-fb43b588465c',
+  'a664eb7-cff0-8532-9b1f-fb43b588465c'
+union all
+select '3b69a094-5c1a-ea11-a811-000d3a228515',
+  'ace38ab1-43ae-5f52-686a-1564781f56a4'
+union all
+select 'd1264cda-8659-7d18-0dc5-7f0ed8b63654',
+  'f103e73a-334e-e411-9f63-0050568d2da8';
+update ryzlan.sku_sst a
+set mcid = b.mcid_new,
+  end_mcid = case
+    when end_mcid = b.mcid_old then b.mcid_new
+    else end_mcid
+  end,
+  parent_mcid = case
+    when parent_mcid = b.mcid_old then b.mcid_new
+    else parent_mcid
+  end,
+  modified_comments = concat(
+    coalesce(modified_comments, ''),
+    'mcid updated from ',
+    a.mcid,
+    ' to ',
+    b.mcid_new
+  )
+from tmp_mcid_mappings_vamsi b --select distinct b.*,a.parent_mcid,a.end_mcid from tmp_mcid_mappings_vamsi b,ryzlan.sku_sst a
+where a.mcid = b.mcid_old;
 END;
 $function$;
-SELECT ryzlan.sp_populate_snapshot_sst_with_sku(NULL);
-CREATE TABLE sandbox.sst_with_sku_before_manual_changes AS
-SELECT *
-FROM ryzlan.sku_sst;

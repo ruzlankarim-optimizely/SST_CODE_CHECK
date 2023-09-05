@@ -744,8 +744,8 @@ CREATE TABLE sandbox.drag_ratio_with_sku_c1_with_flat AS (
       ct8."Wecome Flag (1 if yes)",
       ct8."Unbundling (1 if yes)"
     from combined_table_8 ct8
-    where -- "Flat Customers Only (1 if yes)" = 0 and 
-      "No Diff between UFDM and TAT Prev. Month (1 if yes)" = 0
+    -- where -- "Flat Customers Only (1 if yes)" = 0 and 
+    --   "No Diff between UFDM and TAT Prev. Month (1 if yes)" = 0
   ) --select
   --    count(distinct "Combined MCID Before and After Transition")
   --from

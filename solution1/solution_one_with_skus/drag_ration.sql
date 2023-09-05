@@ -65,7 +65,7 @@ combined_table_1 as (
       order by t1.mcid
     ) as "Row Number of PF"
   from tat_info t1
-    inner join sandbox.drag_ratio_with_sku dr on t1.mcid = dr.mcid_arr
+    inner join sandbox.drag_ratio_with_sku_with_refined_proposal_with_flat dr on t1.mcid = dr.mcid_arr
 ),
 combined_table_2 as (
   select ct1."customer_name_d&b",

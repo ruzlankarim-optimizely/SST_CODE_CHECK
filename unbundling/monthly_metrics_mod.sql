@@ -1,8 +1,6 @@
-
-
--- Change ryzlan schema table to sandbox tables if you wanna test 
-
-
+-- New script in dw-prod-rds-master.cr9dekxonyuj.us-east-1.rds.amaz.
+-- Date: Sep 6, 2023
+-- Time: 1:55:04 PM
 DROP TABLE IF EXISTS ryzlan.mm_base;
 CREATE TABLE ryzlan.mm_base AS
 SELECT *
@@ -252,10 +250,10 @@ CREATE TABLE ryzlan.mm_half AS (
       SELECT DISTINCT current_period
       FROM ufdm_grey.periods
     )
-    AND mcid IS NOT NULL
-    AND mcid <> '-'
     AND NOT(
-      lower(line_type) IN (
+      mcid IS NOT NULL
+      AND mcid <> '-'
+      AND lower(line_type) IN (
         'recurring',
         'inflight',
         'gmbh',
@@ -311,6 +309,7 @@ CREATE TABLE ryzlan.mm AS (
   SELECT *
   FROM ryzlan.mm_half
 );
+DROP TABLE IF EXISTS sandbox.mm_notun;
 CREATE TABLE sandbox.mm_notun AS
 SELECT *
 FROM ryzlan.mm;

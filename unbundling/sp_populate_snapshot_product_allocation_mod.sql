@@ -1,6 +1,9 @@
-CREATE OR REPLACE FUNCTION ryzlan.sp_populate_snapshot_product_allocation_mod(var_date date) RETURNS void LANGUAGE plpgsql AS $function$ BEGIN
+CREATE OR REPLACE FUNCTION ryzlan.sp_populate_snapshot_product_allocation_mod(var_date date) RETURNS void 
+LANGUAGE plpgsql AS $function$ 
+BEGIN
 DELETE FROM ryzlan.pa
 WHERE snapshot_date = var_date;
+
 DROP TABLE IF EXISTS all_lines;
 CREATE TEMP TABLE all_lines AS
 SELECT DISTINCT COALESCE(mm.c_name) || '|' || mm.snapshot_date AS master_customer_id,
@@ -33,78 +36,97 @@ WHERE sma.product_category IS NOT NULL
 DROP TABLE IF EXISTS product_allocated;
 CREATE TEMP TABLE product_allocated AS WITH base_arr_joined AS (
   SELECT *
-  FROM crosstab(
-      'SELECT
-                         master_customer_id,
-                         product_category,
-                         sum(arr_usd_ccfx)
-                     FROM all_lines
-                     GROUP BY 1,2
-                     ORDER BY 1,2 DESC',
-      'SELECT DISTINCT smp.product_category
+FROM crosstab(
+    'SELECT
+          master_customer_id,
+          product_category,
+          sum(arr_usd_ccfx)
+      FROM all_lines
+      GROUP BY 1,2
+      ORDER BY 1,2 DESC',
+    'SELECT DISTINCT smp.product_category
     FROM ufdm_grey.sku_mapping_allocation smp
     WHERE smp.product_category IS NOT NULL
     ORDER BY smp.product_category DESC'
-    ) AS ct (
-      master_customer_id TEXT,
-      x_ott_arr float,
-      x_mobile_arr float,
-      x_full_stack_arr float,
-      web_arr float,
-      support_arr float,
-      snowflakw_arr float,
-      seats_arr float,
-      sf_dna_arr float,
-      program_management_arr float,
-      platform_other_arr float,
-      platform_ent_arr float,
-      personalization_arr float,
-      performance_edge_arr float,
-      mau_arr float,
-      impressions_arr float,
-      full_stack_arr float,
-      experimentation_arr float
-    )
+  ) AS ct (
+    master_customer_id TEXT,
+    x_web_arr float,
+    x_ott_arr float,
+    x_mobile_arr float,
+    x_full_stack_arr float,
+    x_fs_arr float,
+    web_arr float,
+    support_arr float,
+    snowflakw_arr float,
+    seats_arr float,
+    sf_dna_arr float,
+    program_management_arr float,
+    product_recommendations_arr float,
+    platform_other_arr float,
+    platform_ent_arr float,
+    personalization_arr float,
+    performance_edge_arr float,
+    optimizely_data_platform_arr float,
+    ods_arr float,
+    muv_arr float,
+    mau_arr float,
+    impressions_arr float,
+    full_stack_arr float,
+    experimentation_arr float,
+    content_recommendations_arr float
+  )
 ),
 base_arr AS (
   SELECT DISTINCT split_part(master_customer_id, '|', 1) AS customer_id,
     split_part(master_customer_id, '|', 2) AS snapshot_date,
-    x_ott_arr,
-    x_mobile_arr,
-    x_full_stack_arr,
-    web_arr,
-    support_arr,
-    snowflakw_arr,
-    sf_dna_arr,
-    seats_arr,
-    program_management_arr,
-    platform_other_arr,
-    platform_ent_arr,
-    personalization_arr,
-    performance_edge_arr,
-    mau_arr,
-    impressions_arr,
-    full_stack_arr,
-    experimentation_arr
+    x_web_arr ,
+    x_ott_arr ,
+    x_mobile_arr ,
+    x_full_stack_arr ,
+    x_fs_arr ,
+    web_arr ,
+    support_arr ,
+    snowflakw_arr ,
+    seats_arr ,
+    sf_dna_arr ,
+    program_management_arr ,
+    product_recommendations_arr ,
+    platform_other_arr ,
+    platform_ent_arr ,
+    personalization_arr ,
+    performance_edge_arr ,
+    optimizely_data_platform_arr ,
+    ods_arr ,
+    muv_arr ,
+    mau_arr ,
+    impressions_arr ,
+    full_stack_arr ,
+    experimentation_arr ,
+    content_recommendations_arr 
   FROM base_arr_joined
 ),
 agg_arr AS (
   SELECT customer_id,
     snapshot_date,
     --split the even arr from platfor to do the proportional calculations
-    COALESCE(performance_edge_arr, 0) + COALESCE(personalization_arr, 0) + COALESCE(web_arr, 0) + COALESCE(experimentation_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 AS web_products_arr,
-    COALESCE(full_stack_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 + COALESCE(x_ott_arr, 0) + COALESCE(x_full_stack_arr, 0) + COALESCE(x_mobile_arr, 0) AS full_stack_arr,
-    COALESCE(sf_dna_arr, 0) + COALESCE(impressions_arr, 0) + COALESCE(seats_arr, 0) + COALESCE(mau_arr, 0) + COALESCE(program_management_arr, 0) AS total_porportional_arr,
+    COALESCE(performance_edge_arr, 0) + COALESCE(personalization_arr, 0) + COALESCE(web_arr, 0)  + COALESCE(x_web_arr, 0) +COALESCE(experimentation_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 AS web_products_arr,
+
+    COALESCE(full_stack_arr, 0) + COALESCE(x_fs_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 + COALESCE(x_ott_arr, 0) + COALESCE(x_full_stack_arr, 0) + COALESCE(x_mobile_arr, 0) AS full_stack_arr,
+    
+    COALESCE(sf_dna_arr, 0) + COALESCE(impressions_arr, 0) + COALESCE(seats_arr, 0) + COALESCE(mau_arr, 0) + COALESCE(muv_arr, 0) + COALESCE(snowflakw_arr, 0) + COALESCE(program_management_arr, 0) AS total_porportional_arr,
+
     COALESCE(platform_other_arr, 0) AS platform_split_arr,
+
     COALESCE(platform_ent_arr, 0) AS platform_even_arr,
-    COALESCE(support_arr, 0) + COALESCE(snowflakw_arr, 0) AS support_arr
+
+    COALESCE(support_arr, 0) + COALESCE(ods_arr, 0)   AS support_arr
   FROM base_arr
 ),
 platform_arr AS (
   SELECT customer_id,
     snapshot_date,
-.6 * platform_split_arr AS platform_fs_arr,
-.4 * platform_split_arr AS platform_web_arr
+.7 * platform_split_arr AS platform_fs_arr,
+.3 * platform_split_arr AS platform_web_arr
   FROM agg_arr
 ),
 proportional_arr AS (

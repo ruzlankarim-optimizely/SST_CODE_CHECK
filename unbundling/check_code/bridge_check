@@ -1,0 +1,79 @@
+----Product to Customer Bridge
+with intial_product_bridge as 
+	(
+	select 	
+		*, 
+		left(evaluation_period, 4) as year_pb,
+		case 
+			when product_bridge in ('Partial Churn', 'Churn - Migration', 'Chugitrn', 'Partial Churn - Migration', 'WIP', 'Winback') then 'Churn'
+			when product_bridge in ('New', 'New - Migration') then 'New'
+			when product_bridge in ('CPI', 'Up Sell') then 'Up Sell'
+			else product_bridge
+	end as Bridge_Formatted_product 
+	from 
+		sandbox_pd.sst_product_bridge_product_group 
+	)
+	
+, 	product_bridge as 
+(
+select 
+	distinct year_pb as year_pb, 
+	Bridge_Formatted_product as product_bridge, 
+	sum(product_arr_change_ccfx) over(partition by year_pb, Bridge_Formatted_product) as sum_pb 
+from 
+	intial_product_bridge
+)
+
+	
+,	intial_customer_bridge as 
+	(
+	select 	
+		*, 
+		left(evaluation_period, 4) as year_pb,
+		case 
+			when customer_bridge in ('Partial Churn', 'Churn - Migration', 'Churn', 'Partial Churn - Migration', 'WIP', 'Winback') then 'Churn'
+			when customer_bridge in ('New', 'New - Migration') then 'New'
+			when customer_bridge in ('CPI', 'Up Sell') then 'Up Sell'
+			else customer_bridge
+	end as Bridge_Formatted_customer 
+	from 
+		sandbox_pd.sst_customer_bridge
+
+	)
+	
+,	customer_bridge as 
+(
+select 
+	distinct year_pb as year_cb, 
+	Bridge_Formatted_customer as customer_bridge, 
+	sum(customer_arr_change_ccfx) over(partition by year_pb, Bridge_Formatted_customer) as sum_cb 
+from 
+	intial_customer_bridge
+) 
+
+select 
+	cb.year_cb, 
+	cb.customer_bridge, 
+	cb.sum_cb, 
+	pb.year_pb, 
+	pb.product_bridge, 
+	pb.sum_pb,
+	coalesce(pb.sum_pb,0)-coalesce(cb.sum_cb,0) as diff, 
+	sum(cb.sum_cb) over(partition by year_cb) as cb_over_year, 
+	sum(cb.sum_cb) over() as total_cb, 
+	sum(pb.sum_pb) over(partition by year_pb) as pb_over_year, 
+	sum(pb.sum_pb) over() as total_pb
+from 
+	customer_bridge cb 
+full join 
+	product_bridge pb 
+		on 
+				cb.year_cb = pb.year_pb
+				and 
+				cb.customer_bridge = pb.product_bridge 
+
+				
+
+
+
+ 

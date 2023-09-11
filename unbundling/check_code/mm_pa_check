@@ -1,0 +1,141 @@
+---Recreate each step of product allocation
+
+with base_arr_joined AS  ( 
+        SELECT *
+        FROM crosstab(
+        'SELECT 
+            all_lines.master_customer_id,
+            all_lines.product_category,
+            sum(all_lines.arr_usd_ccfx)
+        FROM
+			(
+			SELECT DISTINCT 
+				    COALESCE(mm.c_name) || ''|'' || mm.snapshot_date AS master_customer_id,
+				    sma.product_category,
+				    sum(mm.arr_usd_ccfx) AS arr_usd_ccfx -- DATA-5187 
+				FROM ufdm_blue.monthly_metrics mm
+				INNER JOIN ufdm_grey.sku_mapping_allocation sma ON mm.sku = sma.sku AND sma.product_category IS NOT NULL 
+				WHERE mm.line_type ilike ''recurring''
+				    AND product_category IS NOT NULL 
+			--	    AND mm.snapshot_date = var_date
+				GROUP BY 1,2
+				UNION ALL 
+				SELECT 
+				    COALESCE(mm.c_name) || ''|'' || mm.snapshot_date AS master_customer_id,
+				    sma.product_category,
+				    mm.arr_usd_ccfx AS arr_usd_ccfx -- DATA-5187
+				FROM ufdm_blue.monthly_metrics mm
+				INNER  JOIN ufdm_grey.sku_mapping_allocation sma ON sma.sku = mm.sku  AND sma.product_category IS NOT NULL
+				WHERE line_type = ''inflight''
+				AND product_category IS NOT null
+			) AS all_lines
+        GROUP BY 1,2
+        ORDER BY 1,2 DESC', 'SELECT DISTINCT smp.product_category 
+    FROM ufdm_grey.sku_mapping_allocation smp 
+    WHERE smp.product_category IS NOT NULL
+    ORDER BY smp.product_category DESC'
+        ) AS ct (master_customer_id TEXT,
+            x_ott_arr float,
+            x_mobile_arr float,
+            x_full_stack_arr float,
+            web_arr float, 
+            support_arr float, 
+            snowflakw_arr float,
+            seats_arr float, 
+            sf_dna_arr float, 
+            program_management_arr float, 
+            platform_other_arr float, 
+            platform_ent_arr float,
+            personalization_arr float,
+            performance_edge_arr float,
+            mau_arr float,
+            impressions_arr float,
+            full_stack_arr float,
+            experimentation_arr float)
+    )
+    
+,	base_arr as 
+(
+SELECT 
+	DISTINCT 
+            split_part(master_customer_id, '|', 1 ) AS customer_id,
+            split_part(master_customer_id, '|', 2 ) AS snapshot_date,
+            x_ott_arr,
+            x_mobile_arr, 
+            x_full_stack_arr,
+            web_arr, 
+            support_arr, 
+            snowflakw_arr,
+            sf_dna_arr, 
+            seats_arr, 
+            program_management_arr, 
+            platform_other_arr, 
+            platform_ent_arr,
+            personalization_arr,
+            performance_edge_arr,
+            mau_arr,
+            impressions_arr,
+            full_stack_arr,
+            experimentation_arr
+FROM 
+	base_arr_joined 
+)
+
+, agg_arr AS (
+        SELECT 
+            customer_id,
+            snapshot_date,
+            --split the even arr from platfor to do the proportional calculations
+            COALESCE(performance_edge_arr, 0) + COALESCE(personalization_arr, 0) + COALESCE(web_arr, 0) +  COALESCE(experimentation_arr, 0) + COALESCE(platform_ent_arr, 0)/2 AS web_products_arr,
+            COALESCE(full_stack_arr, 0) + COALESCE(platform_ent_arr, 0)/2 + COALESCE(x_ott_arr, 0) + COALESCE(x_full_stack_arr, 0) + COALESCE(x_mobile_arr, 0) AS full_stack_arr,
+            COALESCE(sf_dna_arr, 0) + COALESCE(impressions_arr, 0) + COALESCE(seats_arr, 0) + COALESCE(mau_arr, 0) + COALESCE(program_management_arr, 0) AS total_porportional_arr,
+            COALESCE(platform_other_arr, 0) AS platform_split_arr,
+            COALESCE(platform_ent_arr, 0) AS platform_even_arr,
+            COALESCE(support_arr, 0) + COALESCE(snowflakw_arr, 0)  AS support_arr 
+        FROM base_arr
+    )
+    
+,	platform_arr AS (
+        SELECT 
+            customer_id,
+            snapshot_date,
+            .7 * platform_split_arr AS platform_fs_arr,
+            .3 * platform_split_arr  AS platform_web_arr
+        FROM agg_arr 
+    )
+    
+,	proportional_arr AS (
+        SELECT 
+            am.customer_id,
+            am.snapshot_date,
+            -- Add ARR for all products with proportional split now that full contract ARR has been calculated
+            am.web_products_arr + am.total_porportional_arr * ((am.web_products_arr + pm.platform_web_arr)/GREATEST(am.web_products_arr + am.full_stack_arr + pm.platform_web_arr + pm.platform_fs_arr,1)::float) AS web_arr,
+            am.full_stack_arr  + am.total_porportional_arr * ((am.full_stack_arr + pm.platform_fs_arr) /GREATEST(am.web_products_arr + am.full_stack_arr + + pm.platform_web_arr + pm.platform_fs_arr,1)::float) AS fs_arr
+        FROM agg_arr am
+        JOIN platform_arr pm ON am.customer_id = pm.customer_id AND am.snapshot_date = pm.snapshot_date
+    )
+    
+,	allocated_arr AS (  
+        SELECT DISTINCT 
+            pm.customer_id,
+            pm.snapshot_date,
+            pm.web_arr + ptm.platform_web_arr AS total_web_arr,
+            pm.fs_arr + ptm.platform_fs_arr AS total_fs_arr,
+            am.support_arr
+        FROM proportional_arr pm 
+        JOIN agg_arr am ON pm.customer_id = am.customer_id AND pm.snapshot_date = am.snapshot_date 
+        JOIN platform_arr ptm ON ptm.customer_id = pm.customer_id  AND ptm.snapshot_date = pm.snapshot_date  
+    )
+    
+SELECT 
+        am.customer_id,
+        am.snapshot_date,
+        v.*
+    FROM allocated_arr am
+    CROSS JOIN lateral( 
+        VALUES 
+            ('Web', total_web_arr),
+            ('Full Stack', total_fs_arr),
+            ('Support', support_arr)
+    ) AS v(sku, arr)
+    WHERE v.arr > 0 AND customer_id IS NOT NULL;

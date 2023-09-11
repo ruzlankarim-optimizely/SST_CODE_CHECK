@@ -1,0 +1,65 @@
+--Comparing SST After Solution 1, Cohort 2
+
+with new_sst as 
+(
+SELECT 
+	distinct mcid as mcid_new,
+	snapshot_date as snapshot_date_new,
+	sum(arr) as sum_arr_usd_new
+FROM 
+	sandbox.sst_with_flat
+where 
+	overage_flag = 'N'
+group by 
+	1,2
+)
+
+,	old_sst as 
+(
+SELECT 
+	distinct mcid,
+	snapshot_date,
+	sum(arr) as sum_arr_usd
+FROM 
+	ufdm.sst 
+where 
+	overage_flag = 'N'
+group by 
+	1,2
+
+)
+	
+, 	test_1 as 
+(
+select 
+	ot.mcid,
+	nt.mcid_new, 
+	ot.snapshot_date,
+	nt.snapshot_date_new, 
+	ot.sum_arr_usd,
+	nt.sum_arr_usd_new,
+	coalesce(ot.snapshot_date, nt.snapshot_date_new) as formatted_date, 
+	(coalesce(nt.sum_arr_usd_new,0)-coalesce(ot.sum_arr_usd,0)) as rel_diff,
+	abs(coalesce(nt.sum_arr_usd_new,0)-coalesce(ot.sum_arr_usd,0)) as diff
+from 
+	old_sst ot 
+full join 
+	new_sst nt 
+		on 
+			ot.mcid = nt.mcid_new
+			and 
+			ot.snapshot_date = nt.snapshot_date_new
+where 
+	abs(coalesce(nt.sum_arr_usd_new,0)-coalesce(ot.sum_arr_usd,0)) > 1
+order by 
+	abs(coalesce(nt.sum_arr_usd_new,0)-coalesce(ot.sum_arr_usd,0)) desc 
+) 
+
+select 
+--	distinct snapshot_date, 
+--	sum(diff) over(partition by snapshot_date) as sum_diff
+	*
+from 
+	test_1 	
+where 
+	coalesce(snapshot_date, snapshot_date_new) < '2023-08-01'

@@ -1,0 +1,37 @@
+with fopti_list as 
+(
+select 
+	distinct sku as fopti_sku 
+from 
+	ufdm_blue.monthly_metrics 
+where 
+	product_family ilike '%Stack%'
+	or 
+	product_family ilike '%Experiment%'
+) 
+
+,	allocation_table as 
+(
+select 
+	distinct sku as sku_grey 
+from 
+	ufdm_grey.sku_mapping_allocation sma 
+where 
+	product_category is not null 
+)
+
+--Skus that are missing 
+
+,	missing_sku as 
+(
+select 
+	fl.fopti_sku 
+from 
+	fopti_list fl 
+left join 
+	allocation_table atb 
+		on 
+			fl.fopti_sku = atb.sku_grey 
+where 
+	atb.sku_grey is null 
+)

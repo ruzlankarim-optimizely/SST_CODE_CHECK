@@ -1,16 +1,22 @@
-CREATE OR REPLACE FUNCTION ryzlan.sp_populate_snapshot_product_allocation_mod(var_date date) RETURNS void 
-LANGUAGE plpgsql AS $function$ 
-BEGIN
+CREATE OR REPLACE FUNCTION ryzlan.reenter_pa_reset(var_date date) RETURNS VOID AS $BODY$ BEGIN ----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  -- CHECK VAR_DATE FIRST THING
+  --------------------------------------------------------------------------------
+  IF var_date IS NULL THEN var_date := (
+    DATE_TRUNC('month', NOW()::DATE) + interval '0 month' - interval '1 day'
+  )::DATE;
+END IF;
 DELETE FROM ryzlan.pa
 WHERE snapshot_date = var_date;
-
+/************************************************************************
+ *              Get the data from MM to be calculated
+ *************************************************************************/
 DROP TABLE IF EXISTS all_lines;
 CREATE TEMP TABLE all_lines AS
 SELECT DISTINCT COALESCE(mm.c_name) || '|' || mm.snapshot_date AS master_customer_id,
   sma.product_category,
   sum(mm.arr_usd_ccfx) AS arr_usd_ccfx -- DATA-5187
 FROM ryzlan.mm mm
-  INNER JOIN ufdm_grey.sku_mapping_allocation sma ON mm.sku = sma.sku
+  INNER JOIN ufdm_grey.sku_mapping_allocation_older_version sma ON mm.sku = sma.sku
   AND sma.product_category IS NOT NULL
 WHERE mm.line_type ilike 'recurring'
   AND product_category IS NOT NULL
@@ -22,98 +28,91 @@ SELECT COALESCE(mm.c_name) || '|' || mm.snapshot_date AS master_customer_id,
   sma.product_category,
   mm.arr_usd_ccfx AS arr_usd_ccfx -- DATA-5187
 FROM ryzlan.mm mm
-  INNER JOIN ufdm_grey.sku_mapping_allocation sma ON sma.sku = mm.sku
+  INNER JOIN ufdm_grey.sku_mapping_allocation_older_version sma ON sma.sku = mm.sku
   AND sma.product_category IS NOT NULL
 WHERE line_type = 'inflight'
   AND product_category IS NOT NULL
   AND mm.snapshot_date = var_date;
+/************************************************************************
+ *           add product categories to the crosstab function
+ *************************************************************************/
 INSERT INTO all_lines (product_category)
 SELECT DISTINCT sma.product_category
-FROM ufdm_grey.sku_mapping_allocation sma
+FROM ufdm_grey.sku_mapping_allocation_older_version sma
   LEFT JOIN all_lines al ON al.product_category = sma.product_category
 WHERE sma.product_category IS NOT NULL
   AND al.master_customer_id IS NULL;
+/************************************************************************
+ *                   Calculate the product allocation
+ *************************************************************************/
 DROP TABLE IF EXISTS product_allocated;
 CREATE TEMP TABLE product_allocated AS WITH base_arr_joined AS (
   SELECT *
-FROM crosstab(
-    'SELECT
-          master_customer_id,
-          product_category,
-          sum(arr_usd_ccfx)
-      FROM all_lines
-      GROUP BY 1,2
-      ORDER BY 1,2 DESC',
-    'SELECT DISTINCT smp.product_category
-    FROM ufdm_grey.sku_mapping_allocation smp
+  FROM crosstab(
+      'SELECT
+                         master_customer_id,
+                         product_category,
+                         sum(arr_usd_ccfx)
+                     FROM all_lines
+                     GROUP BY 1,2
+                     ORDER BY 1,2 DESC',
+      'SELECT DISTINCT smp.product_category
+    FROM ufdm_grey.sku_mapping_allocation_older_version smp
     WHERE smp.product_category IS NOT NULL
     ORDER BY smp.product_category DESC'
-  ) AS ct (
-    master_customer_id TEXT,
-    x_web_arr float,
-    x_ott_arr float,
-    x_mobile_arr float,
-    x_full_stack_arr float,
-    x_fs_arr float,
-    web_arr float,
-    support_arr float,
-    snowflakw_arr float,
-    seats_arr float,
-    sf_dna_arr float,
-    program_management_arr float,
-    platform_other_arr float,
-    platform_ent_arr float,
-    personalization_arr float,
-    performance_edge_arr float,
-    ods_arr float,
-    muv_arr float,
-    mau_arr float,
-    impressions_arr float,
-    full_stack_arr float,
-    experimentation_arr float
-  )
+    ) AS ct (
+      master_customer_id TEXT,
+      x_ott_arr float,
+      x_mobile_arr float,
+      x_full_stack_arr float,
+      web_arr float,
+      support_arr float,
+      snowflakw_arr float,
+      seats_arr float,
+      sf_dna_arr float,
+      program_management_arr float,
+      platform_other_arr float,
+      platform_ent_arr float,
+      personalization_arr float,
+      performance_edge_arr float,
+      mau_arr float,
+      impressions_arr float,
+      full_stack_arr float,
+      experimentation_arr float
+    )
 ),
 base_arr AS (
   SELECT DISTINCT split_part(master_customer_id, '|', 1) AS customer_id,
     split_part(master_customer_id, '|', 2) AS snapshot_date,
-    x_web_arr ,
-    x_ott_arr ,
-    x_mobile_arr ,
-    x_full_stack_arr ,
-    x_fs_arr ,
-    web_arr ,
-    support_arr ,
-    snowflakw_arr ,
-    seats_arr ,
-    sf_dna_arr ,
-    program_management_arr ,
-    platform_other_arr ,
-    platform_ent_arr ,
-    personalization_arr ,
-    performance_edge_arr ,
-    ods_arr ,
-    muv_arr ,
-    mau_arr ,
-    impressions_arr ,
-    full_stack_arr ,
-    experimentation_arr 
+    x_ott_arr,
+    x_mobile_arr,
+    x_full_stack_arr,
+    web_arr,
+    support_arr,
+    snowflakw_arr,
+    sf_dna_arr,
+    seats_arr,
+    program_management_arr,
+    platform_other_arr,
+    platform_ent_arr,
+    personalization_arr,
+    performance_edge_arr,
+    mau_arr,
+    impressions_arr,
+    full_stack_arr,
+    experimentation_arr
   FROM base_arr_joined
 ),
 agg_arr AS (
   SELECT customer_id,
     snapshot_date,
     --split the even arr from platfor to do the proportional calculations
-    COALESCE(performance_edge_arr, 0) + COALESCE(personalization_arr, 0) + COALESCE(web_arr, 0)  + COALESCE(x_web_arr, 0) +COALESCE(experimentation_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 AS web_products_arr,
-
-    COALESCE(full_stack_arr, 0) + COALESCE(x_fs_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 + COALESCE(x_ott_arr, 0) + COALESCE(x_full_stack_arr, 0) + COALESCE(x_mobile_arr, 0) AS full_stack_arr,
-    
-    COALESCE(sf_dna_arr, 0) + COALESCE(impressions_arr, 0) + COALESCE(seats_arr, 0) + COALESCE(mau_arr, 0) + COALESCE(muv_arr, 0) + COALESCE(snowflakw_arr, 0) + COALESCE(program_management_arr, 0) AS total_porportional_arr,
-
+    COALESCE(performance_edge_arr, 0) + COALESCE(personalization_arr, 0) + COALESCE(web_arr, 0) + COALESCE(experimentation_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 AS web_products_arr,
+    COALESCE(full_stack_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 + COALESCE(x_ott_arr, 0) + COALESCE(x_full_stack_arr, 0) + COALESCE(x_mobile_arr, 0) AS full_stack_arr,
+    COALESCE(sf_dna_arr, 0) + COALESCE(impressions_arr, 0) + COALESCE(seats_arr, 0) + COALESCE(mau_arr, 0) + COALESCE(program_management_arr, 0) AS total_porportional_arr,
     COALESCE(platform_other_arr, 0) AS platform_split_arr,
-
-    -- COALESCE(platform_ent_arr, 0) AS platform_even_arr,
-
-    COALESCE(support_arr, 0) + COALESCE(ods_arr, 0)   AS support_arr
+    COALESCE(platform_ent_arr, 0) AS platform_even_arr,
+    COALESCE(support_arr, 0) + COALESCE(snowflakw_arr, 0) AS support_arr
   FROM base_arr
 ),
 platform_arr AS (
@@ -166,6 +165,10 @@ FROM allocated_arr am
   ) AS v(sku, arr)
 WHERE v.arr > 0
   AND customer_id IS NOT NULL;
+/************************************************************************
+ *               Base table to get all the complementary data
+ * c_names need to be changed with the new fields of monthly metrics
+ *************************************************************************/
 DROP TABLE IF EXISTS complementary_fields;
 CREATE TEMP TABLE complementary_fields AS
 SELECT mm.snapshot_date,
@@ -202,7 +205,7 @@ SELECT mm.snapshot_date,
   mm.new_line_of_business,
   mm.new_line_of_business_sub_category
 FROM ryzlan.mm mm
-  INNER JOIN ufdm_grey.sku_mapping_allocation sma ON mm.sku = sma.sku
+  INNER JOIN ufdm_grey.sku_mapping_allocation_older_version sma ON mm.sku = sma.sku
   AND sma.product_category IS NOT NULL
 WHERE mm.line_type ilike 'recurring'
   AND product_category IS NOT NULL
@@ -242,11 +245,14 @@ SELECT mm.snapshot_date,
   mm.new_line_of_business,
   mm.new_line_of_business_sub_category
 FROM ryzlan.mm mm
-  INNER JOIN ufdm_grey.sku_mapping_allocation sma ON sma.sku = mm.sku
+  INNER JOIN ufdm_grey.sku_mapping_allocation_older_version sma ON sma.sku = mm.sku
   AND sma.product_category IS NOT NULL
 WHERE mm.line_type = 'inflight'
   AND product_category IS NOT NULL
   AND mm.snapshot_date = var_date;
+/************************************************************************
+ *              getting the bill_frequency field
+ *************************************************************************/
 DROP TABLE IF EXISTS base_table;
 CREATE TEMP TABLE base_table AS
 SELECT c_name,
@@ -255,16 +261,18 @@ SELECT c_name,
   snapshot_date,
   arr_usd_mefx
 FROM ryzlan.mm mm
-  INNER JOIN ufdm_grey.sku_mapping_allocation sma ON mm.sku = sma.sku
+  INNER JOIN ufdm_grey.sku_mapping_allocation_older_version sma ON mm.sku = sma.sku
   and product_category IS NOT NULL --correction for line_type
 WHERE lower(mm.line_type) in ('recurring', 'inflight')
   AND product_category IS NOT NULL
   AND mm.snapshot_date = var_date;
+--------------Drop inflights as they do not have billing frequency
 DROP TABLE IF EXISTS base_table_2;
 CREATE TEMP TABLE base_table_2 AS
 select *
 from base_table
 where bill_freq != '';
+--------------For customers which have multiple billing frequencies for the same date, rank billing frequency descending by arr_usd_mefx
 DROP TABLE IF EXISTS base_table_3;
 CREATE TEMP TABLE base_table_3 AS
 SELECT *,
@@ -282,6 +290,9 @@ SELECT c_name,
   snapshot_date
 FROM base_table_3
 WHERE rank_bill_freq = 1;
+/************************************************************************
+ *               Insert into the product allocation table
+ *************************************************************************/
 INSERT INTO ryzlan.pa (
     snapshot_date,
     c_name,
@@ -443,11 +454,12 @@ FROM product_allocated pa
   LEFT JOIN plr pl ON pv.c_name = pl.c_name
   and pa.snapshot_date::date = pl.snapshot_date
 WHERE parent_customer IS NOT NULL;
-UPDATE ryzlan.pa
+--not updating modified date for the below update as it is not major
+UPDATE ufdm_blue.product_allocated
 SET MCID = coalesce(
     NULLIF(TRIM(end_customer_master_customer_id), ''),
     NULLIF(TRIM(parent_master_customer_id), '')
   )
 WHERE snapshot_date = var_date;
 END;
-$function$;
+$BODY$ LANGUAGE 'plpgsql';

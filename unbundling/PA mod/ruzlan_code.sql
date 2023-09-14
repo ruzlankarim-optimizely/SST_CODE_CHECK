@@ -1,119 +1,110 @@
-CREATE OR REPLACE FUNCTION ryzlan.sp_populate_snapshot_product_allocation_mod(var_date date) RETURNS void 
-LANGUAGE plpgsql AS $function$ 
-BEGIN
+CREATE OR REPLACE FUNCTION ryzlan.sp_populate_snapshot_product_allocation_mod(var_date date) RETURNS void LANGUAGE plpgsql AS $function$ BEGIN
 DELETE FROM ryzlan.pa
 WHERE snapshot_date = var_date;
-
 DROP TABLE IF EXISTS all_lines;
 CREATE TEMP TABLE all_lines AS
-SELECT DISTINCT COALESCE(mm.c_name) || '|' || mm.snapshot_date AS master_customer_id,
+SELECT COALESCE(mm.mcid) || '|' || mm.snapshot_date AS master_customer_id,
   sma.product_category,
   sum(mm.arr_usd_ccfx) AS arr_usd_ccfx -- DATA-5187
 FROM ryzlan.mm mm
-  INNER JOIN ufdm_grey.sku_mapping_allocation sma ON mm.sku = sma.sku
+  JOIN ufdm_grey.sku_mapping_allocation_corrected sma ON mm.sku = sma.sku
   AND sma.product_category IS NOT NULL
-WHERE mm.line_type ilike 'recurring'
+WHERE (
+    lower(mm.line_type) ilike 'recurring'
+    OR lower(mm.line_type) ilike 'inflight'
+  )
   AND product_category IS NOT NULL
   AND mm.snapshot_date = var_date
 GROUP BY 1,
-  2
-UNION ALL
-SELECT COALESCE(mm.c_name) || '|' || mm.snapshot_date AS master_customer_id,
-  sma.product_category,
-  mm.arr_usd_ccfx AS arr_usd_ccfx -- DATA-5187
-FROM ryzlan.mm mm
-  INNER JOIN ufdm_grey.sku_mapping_allocation sma ON sma.sku = mm.sku
-  AND sma.product_category IS NOT NULL
-WHERE line_type = 'inflight'
-  AND product_category IS NOT NULL
-  AND mm.snapshot_date = var_date;
+  2;
 INSERT INTO all_lines (product_category)
 SELECT DISTINCT sma.product_category
-FROM ufdm_grey.sku_mapping_allocation sma
+FROM ufdm_grey.sku_mapping_allocation_corrected sma
   LEFT JOIN all_lines al ON al.product_category = sma.product_category
 WHERE sma.product_category IS NOT NULL
   AND al.master_customer_id IS NULL;
 DROP TABLE IF EXISTS product_allocated;
 CREATE TEMP TABLE product_allocated AS WITH base_arr_joined AS (
   SELECT *
-FROM crosstab(
-    'SELECT
+  FROM crosstab(
+      'SELECT
           master_customer_id,
           product_category,
           sum(arr_usd_ccfx)
       FROM all_lines
       GROUP BY 1,2
       ORDER BY 1,2 DESC',
-    'SELECT DISTINCT smp.product_category
-    FROM ufdm_grey.sku_mapping_allocation smp
+      'SELECT DISTINCT smp.product_category
+    FROM ufdm_grey.sku_mapping_allocation_corrected smp
     WHERE smp.product_category IS NOT NULL
     ORDER BY smp.product_category DESC'
-  ) AS ct (
-    master_customer_id TEXT,
-    x_web_arr float,
-    x_ott_arr float,
-    x_mobile_arr float,
-    x_full_stack_arr float,
-    x_fs_arr float,
-    web_arr float,
-    support_arr float,
-    snowflakw_arr float,
-    seats_arr float,
-    sf_dna_arr float,
-    program_management_arr float,
-    platform_other_arr float,
-    platform_ent_arr float,
-    personalization_arr float,
-    performance_edge_arr float,
-    ods_arr float,
-    muv_arr float,
-    mau_arr float,
-    impressions_arr float,
-    full_stack_arr float,
-    experimentation_arr float
-  )
+    ) AS ct (
+      master_customer_id TEXT,
+      x_web_arr float,
+      x_ott_arr float,
+      x_mobile_arr float,
+      x_full_stack_arr float,
+      x_fs_arr float,
+      web_arr float,
+      support_arr float,
+      snowflakw_arr float,
+      sf_dna_arr float,
+      seats_arr float,
+      program_management_arr float,
+      product_recommendations_arr float,
+      platform_other_arr float,
+      platform_ent_arr float,
+      personalization_arr float,
+      performance_edge_arr float,
+      optimizely_data_platform_arr float,
+      ods_arr float,
+      muv_arr float,
+      mau_arr float,
+      impressions_arr float,
+      full_stack_arr float,
+      experimentation_arr float,
+      content_recommendations_arr float
+    )
 ),
 base_arr AS (
   SELECT DISTINCT split_part(master_customer_id, '|', 1) AS customer_id,
     split_part(master_customer_id, '|', 2) AS snapshot_date,
-    x_web_arr ,
-    x_ott_arr ,
-    x_mobile_arr ,
-    x_full_stack_arr ,
-    x_fs_arr ,
-    web_arr ,
-    support_arr ,
-    snowflakw_arr ,
-    seats_arr ,
-    sf_dna_arr ,
-    program_management_arr ,
-    platform_other_arr ,
-    platform_ent_arr ,
-    personalization_arr ,
-    performance_edge_arr ,
-    ods_arr ,
-    muv_arr ,
-    mau_arr ,
-    impressions_arr ,
-    full_stack_arr ,
-    experimentation_arr 
+    x_web_arr,
+    x_ott_arr,
+    x_mobile_arr,
+    x_full_stack_arr,
+    x_fs_arr,
+    web_arr,
+    support_arr,
+    snowflakw_arr,
+    sf_dna_arr,
+    seats_arr,
+    program_management_arr,
+    product_recommendations_arr,
+    platform_other_arr,
+    platform_ent_arr,
+    personalization_arr,
+    performance_edge_arr,
+    optimizely_data_platform_arr,
+    ods_arr,
+    muv_arr,
+    mau_arr,
+    impressions_arr,
+    full_stack_arr,
+    experimentation_arr,
+    content_recommendations_arr
   FROM base_arr_joined
 ),
 agg_arr AS (
   SELECT customer_id,
     snapshot_date,
     --split the even arr from platfor to do the proportional calculations
-    COALESCE(performance_edge_arr, 0) + COALESCE(personalization_arr, 0) + COALESCE(web_arr, 0)  + COALESCE(x_web_arr, 0) +COALESCE(experimentation_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 AS web_products_arr,
-
+    COALESCE(performance_edge_arr, 0) + COALESCE(personalization_arr, 0) + COALESCE(web_arr, 0) + COALESCE(x_web_arr, 0) + COALESCE(experimentation_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 AS web_products_arr,
     COALESCE(full_stack_arr, 0) + COALESCE(x_fs_arr, 0) + COALESCE(platform_ent_arr, 0) / 2 + COALESCE(x_ott_arr, 0) + COALESCE(x_full_stack_arr, 0) + COALESCE(x_mobile_arr, 0) AS full_stack_arr,
-    
     COALESCE(sf_dna_arr, 0) + COALESCE(impressions_arr, 0) + COALESCE(seats_arr, 0) + COALESCE(mau_arr, 0) + COALESCE(muv_arr, 0) + COALESCE(snowflakw_arr, 0) + COALESCE(program_management_arr, 0) AS total_porportional_arr,
-
     COALESCE(platform_other_arr, 0) AS platform_split_arr,
-
     -- COALESCE(platform_ent_arr, 0) AS platform_even_arr,
-
-    COALESCE(support_arr, 0) + COALESCE(ods_arr, 0)   AS support_arr
+    COALESCE(support_arr, 0) + COALESCE(ods_arr, 0) AS support_arr
   FROM base_arr
 ),
 platform_arr AS (
@@ -124,30 +115,45 @@ platform_arr AS (
   FROM agg_arr
 ),
 proportional_arr AS (
-  SELECT am.customer_id,
-    am.snapshot_date,
-    -- Add ARR for all products with proportional split now that full contract ARR has been calculated
-    am.web_products_arr + am.total_porportional_arr * (
-      (am.web_products_arr + pm.platform_web_arr) / GREATEST(
-        am.web_products_arr + am.full_stack_arr + pm.platform_web_arr + pm.platform_fs_arr,
-        1
-      )::float
-    ) AS web_arr,
-    am.full_stack_arr + am.total_porportional_arr * (
-      (am.full_stack_arr + pm.platform_fs_arr) / GREATEST(
-        am.web_products_arr + am.full_stack_arr + + pm.platform_web_arr + pm.platform_fs_arr,
-        1
-      )::float
-    ) AS fs_arr
-  FROM agg_arr am
-    JOIN platform_arr pm ON am.customer_id = pm.customer_id
-    AND am.snapshot_date = pm.snapshot_date
+  SELECT customer_id,
+    snapshot_date,
+    total_proportional * CASE
+      WHEN (total_web / total_all) = 1
+      AND (total_fs / total_all) = 1 THEN 0.5
+      ELSE (total_web / total_all)
+    end AS web_arr,
+    total_proportional * CASE
+      WHEN (total_web / total_all) = 1
+      AND (total_fs / total_all) = 1 THEN 0.5
+      ELSE (total_fs / total_all)
+    end AS fs_arr
+  FROM (
+      SELECT am.customer_id,
+        am.snapshot_date,
+        -- Add ARR for all products with proportional split now that full contract ARR has been calculated
+        am.total_porportional_arr AS total_proportional,
+        CASE
+          WHEN (am.web_products_arr + pm.platform_web_arr) = 0 THEN 1
+          ELSE (am.web_products_arr + pm.platform_web_arr)
+        END AS total_web,
+        CASE
+          WHEN (am.full_stack_arr + pm.platform_fs_arr) = 0 THEN 1
+          ELSE (am.full_stack_arr + pm.platform_fs_arr)
+        END AS total_fs,
+        GREATEST(
+          am.web_products_arr + am.full_stack_arr + pm.platform_web_arr + pm.platform_fs_arr,
+          1
+        ) AS total_all
+      FROM agg_arr am
+        JOIN platform_arr pm ON am.customer_id = pm.customer_id
+        AND am.snapshot_date = pm.snapshot_date
+    ) AS a
 ),
 allocated_arr AS (
   SELECT DISTINCT pm.customer_id,
     pm.snapshot_date,
-    pm.web_arr + ptm.platform_web_arr AS total_web_arr,
-    pm.fs_arr + ptm.platform_fs_arr AS total_fs_arr,
+    pm.web_arr + ptm.platform_web_arr + am.web_products_arr AS total_web_arr,
+    pm.fs_arr + ptm.platform_fs_arr + am.full_stack_arr AS total_fs_arr,
     am.support_arr
   FROM proportional_arr pm
     JOIN agg_arr am ON pm.customer_id = am.customer_id
@@ -169,6 +175,7 @@ WHERE v.arr > 0
 DROP TABLE IF EXISTS complementary_fields;
 CREATE TEMP TABLE complementary_fields AS
 SELECT mm.snapshot_date,
+  mm.mcid,
   mm.c_name,
   mm.parent_customer,
   mm.parent_customer_ns_id,
@@ -202,13 +209,14 @@ SELECT mm.snapshot_date,
   mm.new_line_of_business,
   mm.new_line_of_business_sub_category
 FROM ryzlan.mm mm
-  INNER JOIN ufdm_grey.sku_mapping_allocation sma ON mm.sku = sma.sku
+  INNER JOIN ufdm_grey.sku_mapping_allocation_corrected sma ON mm.sku = sma.sku
   AND sma.product_category IS NOT NULL
 WHERE mm.line_type ilike 'recurring'
   AND product_category IS NOT NULL
   AND mm.snapshot_date = var_date
 UNION ALL
 SELECT mm.snapshot_date,
+  mm.mcid,
   mm.c_name,
   mm.parent_customer,
   mm.parent_customer_ns_id,
@@ -242,20 +250,21 @@ SELECT mm.snapshot_date,
   mm.new_line_of_business,
   mm.new_line_of_business_sub_category
 FROM ryzlan.mm mm
-  INNER JOIN ufdm_grey.sku_mapping_allocation sma ON sma.sku = mm.sku
+  INNER JOIN ufdm_grey.sku_mapping_allocation_corrected sma ON sma.sku = mm.sku
   AND sma.product_category IS NOT NULL
 WHERE mm.line_type = 'inflight'
   AND product_category IS NOT NULL
   AND mm.snapshot_date = var_date;
 DROP TABLE IF EXISTS base_table;
 CREATE TEMP TABLE base_table AS
-SELECT c_name,
+SELECT mcid,
+  c_name,
   line_type,
   bill_freq,
   snapshot_date,
   arr_usd_mefx
 FROM ryzlan.mm mm
-  INNER JOIN ufdm_grey.sku_mapping_allocation sma ON mm.sku = sma.sku
+  INNER JOIN ufdm_grey.sku_mapping_allocation_corrected sma ON mm.sku = sma.sku
   and product_category IS NOT NULL --correction for line_type
 WHERE lower(mm.line_type) in ('recurring', 'inflight')
   AND product_category IS NOT NULL
@@ -269,7 +278,7 @@ DROP TABLE IF EXISTS base_table_3;
 CREATE TEMP TABLE base_table_3 AS
 SELECT *,
   row_number() over(
-    partition by c_name,
+    partition by mcid,
     snapshot_date
     order by arr_usd_mefx desc
   ) as rank_bill_freq
@@ -277,13 +286,15 @@ FROM base_table_2;
 ---Final table to join
 DROP TABLE IF EXISTS plr;
 CREATE TEMP TABLE plr as
-SELECT c_name,
+SELECT mcid,
+  c_name,
   bill_freq,
   snapshot_date
 FROM base_table_3
 WHERE rank_bill_freq = 1;
 INSERT INTO ryzlan.pa (
     snapshot_date,
+    mcid,
     c_name,
     parent_customer,
     parent_customer_ns_id,
@@ -341,7 +352,7 @@ INSERT INTO ryzlan.pa (
     new_line_of_business_sub_category
   ) WITH grouped_values AS (
     SELECT snapshot_date,
-      c_name AS join_id,
+      mcid AS join_id,
       max(c_name) AS c_name,
       max(parent_customer) AS parent_customer,
       max(parent_customer_ns_id) AS parent_customer_ns_id,
@@ -379,6 +390,7 @@ INSERT INTO ryzlan.pa (
       2
   )
 SELECT pa.snapshot_date::date,
+  pa.customer_id AS mcid,
   pv.c_name,
   pv.parent_customer,
   pv.parent_customer_ns_id,
@@ -440,14 +452,14 @@ SELECT pa.snapshot_date::date,
 FROM product_allocated pa
   LEFT JOIN grouped_values pv ON pa.snapshot_date::date = pv.snapshot_date
   AND pa.customer_id = pv.join_id
-  LEFT JOIN plr pl ON pv.c_name = pl.c_name
+  LEFT JOIN plr pl ON pv.join_id = pl.mcid
   and pa.snapshot_date::date = pl.snapshot_date
 WHERE parent_customer IS NOT NULL;
-UPDATE ryzlan.pa
-SET MCID = coalesce(
-    NULLIF(TRIM(end_customer_master_customer_id), ''),
-    NULLIF(TRIM(parent_master_customer_id), '')
-  )
-WHERE snapshot_date = var_date;
+--UPDATE ryzlan.pa
+--SET MCID = coalesce(
+--    NULLIF(TRIM(end_customer_master_customer_id), ''),
+--    NULLIF(TRIM(parent_master_customer_id), '')
+--  )
+--WHERE snapshot_date = var_date;
 END;
 $function$;

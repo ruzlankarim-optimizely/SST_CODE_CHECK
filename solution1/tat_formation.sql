@@ -1,3 +1,8 @@
+-- New script in dw-prod-rds-master.cr9dekxonyuj.us-east-1.rds.amaz.
+-- Date: Sep 19, 2023
+-- Time: 4:10:26 PM
+SELECT *
+FROM sandbox_pd.arr 
 drop table if exists sandbox.drag_ratio_with_sku_c1_with_flat;
 CREATE TABLE sandbox.drag_ratio_with_sku_c1_with_flat AS (
   with tat_dates as (
@@ -743,9 +748,8 @@ CREATE TABLE sandbox.drag_ratio_with_sku_c1_with_flat AS (
       ct8."Campaign Flag (1 if yes)",
       ct8."Wecome Flag (1 if yes)",
       ct8."Unbundling (1 if yes)"
-    from combined_table_8 ct8
-    -- where -- "Flat Customers Only (1 if yes)" = 0 and 
-    --   "No Diff between UFDM and TAT Prev. Month (1 if yes)" = 0
+    from combined_table_8 ct8 -- where -- "Flat Customers Only (1 if yes)" = 0 and 
+      --   "No Diff between UFDM and TAT Prev. Month (1 if yes)" = 0
   ) --select
   --    count(distinct "Combined MCID Before and After Transition")
   --from
@@ -1519,7 +1523,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku_c1_with_flat AS (
     from combined_table_15
     where -- "Flat Customers Only (1 if yes)" = 0 and
       -- "No Diff between UFDM and TAT Prev. Month (1 if yes)" = 0 and 
-       mcid_arr is not null
+      mcid_arr is not null
     order by "Combined MCID Before and After Transition"
   ) --New code for drag ratio
   select mcid_arr,
@@ -1532,4 +1536,889 @@ CREATE TABLE sandbox.drag_ratio_with_sku_c1_with_flat AS (
     "Product Family Transition"
   from sc1_sc2
   where "Ratio of ARR Allocated to PF UFDM ARR" is not null
+);
++ DROP TABLE IF EXISTS sandbox.drag_ratio_with_sku_c2;
+CREATE TABLE sandbox.drag_ratio_with_sku_c2 AS (
+  with cartersian_table as (
+    select a.mcid,
+      b.snapshot_date
+    from (
+        select distinct mcid
+        from ufdm.tat_upload_data tud
+        where is_deleted IS DISTINCT
+        FROM 1
+          and "Overage Y/N" is distinct
+        from 'Y'
+          and not (
+            date_trunc('month', snapshot_date) = '2021-12-01'::DATE
+            AND product_family ilike '%Campaign%'
+          )
+      ) as a,
+      (
+        select distinct snapshot_date
+        from ufdm.tat_upload_data tud
+        where is_deleted IS DISTINCT
+        FROM 1
+          and "Overage Y/N" is distinct
+        from 'Y'
+          and not (
+            date_trunc('month', snapshot_date) = '2021-12-01'::DATE
+            AND product_family ilike '%Campaign%'
+          )
+      ) as b
+  ),
+  initial_tat as (
+    select distinct mcid,
+      snapshot_date,
+      sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_mcid_date
+    from ufdm.tat_upload_data tud
+    where is_deleted IS DISTINCT
+    FROM 1
+      and "Overage Y/N" is distinct
+    from 'Y'
+      and not (
+        date_trunc('month', snapshot_date) = '2021-12-01'::DATE
+        AND product_family ilike '%Campaign%'
+      )
+  ) --Now do a left join to absorb the data into the cartersian table 
+,
+  tat_0 as (
+    select ct.mcid,
+      ct.snapshot_date,
+      coalesce(it.sum_mcid_date, 0) as sum_mcid_date
+    from cartersian_table ct
+      left join initial_tat it on ct.mcid = it.mcid
+      and ct.snapshot_date = it.snapshot_date
+  ) --Put a Limit on Date and Start Summing ARR From Now Till End and ARR Over the Entire Period 
+,
+  tat_1 as (
+    select mcid,
+      snapshot_date,
+      sum_mcid_date,
+      sum(sum_mcid_date) over(
+        partition by mcid
+        order by snapshot_date rows between current row
+          and unbounded following
+      ) as "ARR from Now Till End",
+      sum(sum_mcid_date) over(partition by mcid) as "ARR Over the Entire Time Period",
+      min(snapshot_date) filter(
+        where sum_mcid_date > 0
+      ) over(partition by mcid) as "Start of Data in TAT"
+    from tat_0 --Put a limit on date 
+    where snapshot_date < '2022-01-01'
+  ) --Get rid of customers who've never had ARR 
+  --Take the first date when ARR goes to zero for the rest of time 
+,
+  tat_2 as (
+    select mcid,
+      snapshot_date,
+      sum_mcid_date,
+      "Start of Data in TAT",
+      "ARR from Now Till End",
+      "ARR Over the Entire Time Period",
+      min(snapshot_date) filter(
+        where "ARR from Now Till End" = 0
+      ) over(partition by mcid) as "Date of Churn"
+    from tat_1
+    where "ARR Over the Entire Time Period" > 0
+  ) --Now find only churn customers 
+,
+  churn_cust as (
+    select distinct mcid,
+      "Start of Data in TAT",
+      "Date of Churn"
+    from tat_2
+    where "Date of Churn" is not null
+  ) --Test to make sure they are not in the TAT customers being changed 
+  --select 
+  --    cc.mcid 
+  --from 
+  --    churn_cust cc 
+  --inner join 
+  --    sandbox.drag_ration dr 
+  --        on 
+  --            dr.mcid = cc.mcid 
+  --There are 2 scenarios with churn customers 1) They churned out from TAT and never appeared in UFDM 2) They churned out in TAT and were found later in UFDM 
+  --Find Non-Fopti Customers in UFDM and find the minimum date they start 
+,
+  non_fopti_1 as (
+    select mcid,
+      snapshot_date,
+      arr,
+      min(snapshot_date) filter(
+        where arr > 0
+      ) over(partition by mcid) as "Start of SST Data from UFDM"
+    from sandbox.sst_temp
+    where record_source ilike 'ufdm_2022'
+      and product_family not in (
+        'Full Stack',
+        'Web',
+        'Recurring: Cloud: Intelligence Cloud: Web Experimentation and Personalization'
+      )
+  ),
+  non_fopti_2 as (
+    select distinct mcid,
+      "Start of SST Data from UFDM"
+    from non_fopti_1
+    where "Start of SST Data from UFDM" is not null
+    order by mcid
+  ) --Now join the non-Fopti data to the TAT. This is the final table that shows TAT MCID, Date of Churn and When they Start in UFDM ARR 
+,
+  tat_final as (
+    select cc.mcid,
+      cc."Date of Churn",
+      cc."Start of Data in TAT",
+      date_trunc('MONTH', nfp2."Start of SST Data from UFDM")::DATE as "Start of SST Data from UFDM"
+    from churn_cust cc
+      left join non_fopti_2 nfp2 on cc.mcid = nfp2.mcid
+  ) --Now look at UFDM ARR: Check the Non-Fopti Data in UFDM ARR 
+  --Take absolute values 
+,
+  unbund_arr as (
+    select *,
+      abs(arr_usd_ccfx) as abs_arr_usd_ccfx
+    from sandbox_pd.arr
+  ),
+  ufdm_arr_0 as (
+    select distinct mcid,
+      snapshot_date,
+      product_family,
+      sku,
+      sum(arr_usd_ccfx) over(
+        partition by mcid,
+        snapshot_date,
+        product_family,
+        sku
+      ) as sum_arr_pf,
+      --Ratios with negative values as well 
+      (
+        sum(abs_arr_usd_ccfx) over(
+          partition by mcid,
+          snapshot_date,
+          product_family,
+          sku
+        ) / nullif(
+          sum(abs_arr_usd_ccfx) over(partition by mcid, snapshot_date),
+          0
+        )
+      ) *(abs_arr_usd_ccfx / nullif(arr_usd_ccfx, 0)) as "Ratio to Each PF",
+      sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_ufdm_arr
+    from unbund_arr
+    where product_family not in (
+        'Full Stack',
+        'Web',
+        'Recurring: Cloud: Intelligence Cloud: Web Experimentation and Personalization'
+      )
+  ) --Put a limit on the table to select only customers who have greater than arr > 0 
+  --select 
+  --  * 
+  --from 
+  --  ufdm_arr_0 
+  --where 
+  --  mcid = '43a42cfd-dc29-e011-915e-0018717a8c82'
+,
+  ufdm_arr_1 as (
+    select mcid,
+      date_trunc('MONTH', snapshot_date)::DATE as date_ufdm_arr,
+      product_family,
+      sku,
+      sum_arr_pf,
+      "Ratio to Each PF",
+      sum_ufdm_arr
+    from ufdm_arr_0
+    where sum_ufdm_arr > 0
+  ) --This is the final UFDM ARR that shows the Non-Fopti Data with ARR 
+,
+  ufdm_arr_2 as (
+    select distinct mcid,
+      date_ufdm_arr,
+      sum_ufdm_arr
+    from ufdm_arr_1
+  ) --select 
+  --    *
+  --from
+  --    ufdm_arr_1
+  --where 
+  --    mcid = '01052ec2-dae5-e411-9afb-0050568d2da8'
+  --Now Join TAT to UFDM ARR on 2 things: +/-3 months and +/-6 months 
+,
+  combined_table_1 as (
+    select tf.mcid,
+      tf."Date of Churn",
+      tf."Start of Data in TAT",
+      ua2.date_ufdm_arr as "UFDM ARR Dates in +/- 6 Month Range: with ARR",
+      abs(tf."Date of Churn" - ua2.date_ufdm_arr) as "Abs. Difference between Churn Date and 6 Month Range",
+      tf."Start of SST Data from UFDM"
+    from tat_final tf
+      left join ufdm_arr_2 ua2 on ua2.mcid = tf.mcid
+      and (
+        (
+          ua2.date_ufdm_arr >= tf."Date of Churn" - interval '6 month'
+        )
+        and (ua2.date_ufdm_arr <= tf."Date of Churn")
+        or (
+          ua2.date_ufdm_arr <= tf."Date of Churn" + interval '6 month'
+        )
+        and (ua2.date_ufdm_arr >= tf."Date of Churn")
+      )
+    order by tf.mcid
+  ) --Only take the closest date from the +6 month range 
+  --Rank the least difference first 
+  --Rank the latest dates first 
+,
+  combined_table_2 as (
+    select ct1.mcid,
+      ct1."Date of Churn",
+      ct1."Start of Data in TAT",
+      ct1."UFDM ARR Dates in +/- 6 Month Range: with ARR",
+      ct1."Abs. Difference between Churn Date and 6 Month Range",
+      ct1."Start of SST Data from UFDM",
+      rank() over(
+        partition by mcid
+        order by ct1."Abs. Difference between Churn Date and 6 Month Range",
+          ct1."UFDM ARR Dates in +/- 6 Month Range: with ARR" desc
+      ) as ranking_6_month
+    from combined_table_1 ct1
+  ) --Now only keep the rows where ranking = 1 
+,
+  combined_table_3 as (
+    select ct2.mcid,
+      ct2."Date of Churn",
+      ct2."Start of Data in TAT",
+      ct2."UFDM ARR Dates in +/- 6 Month Range: with ARR",
+      ct2."Abs. Difference between Churn Date and 6 Month Range",
+      ct2."Start of SST Data from UFDM",
+      ct2.ranking_6_month
+    from combined_table_2 ct2
+    where ranking_6_month = 1
+  ) --Test to make sure there are no duplicates 
+  --select
+  --    distinct mcid, 
+  --    count(*) as no_of_obs
+  --from 
+  --    combined_table_3 
+  --group by 
+  --    mcid 
+  --having 
+  --    count(*) > 1
+  --Now repeat this process for 2-month period 
+,
+  combined_table_4 as (
+    select ct3.mcid,
+      ct3."Date of Churn",
+      ct3."Start of Data in TAT",
+      ct3."UFDM ARR Dates in +/- 6 Month Range: with ARR",
+      ct3."Start of SST Data from UFDM",
+      ua3.date_ufdm_arr as "UFDM ARR Dates in +/- 2 Month Range: with ARR",
+      abs(ct3."Date of Churn" - ua3.date_ufdm_arr) as "Abs. Difference between Churn Date and 2 Month Range"
+    from combined_table_3 ct3
+      left join ufdm_arr_2 ua3 on ua3.mcid = ct3.mcid
+      and (
+        (
+          ua3.date_ufdm_arr >= ct3."Date of Churn" - interval '2 month'
+        )
+        and (ua3.date_ufdm_arr <= ct3."Date of Churn")
+        or (
+          ua3.date_ufdm_arr <= ct3."Date of Churn" + interval '2 month'
+        )
+        and (ua3.date_ufdm_arr >= ct3."Date of Churn")
+      )
+    order by ct3.mcid
+  ) --Now start ranking the dates 
+  --Rank the least difference first 
+  --Rank the latest dates first 
+,
+  combined_table_5 as (
+    select ct4.mcid,
+      ct4."Date of Churn",
+      ct4."Start of Data in TAT",
+      ct4."UFDM ARR Dates in +/- 6 Month Range: with ARR",
+      ct4."Start of SST Data from UFDM",
+      ct4."UFDM ARR Dates in +/- 2 Month Range: with ARR",
+      ct4."Abs. Difference between Churn Date and 2 Month Range",
+      rank() over(
+        partition by mcid
+        order by ct4."Abs. Difference between Churn Date and 2 Month Range",
+          ct4."UFDM ARR Dates in +/- 2 Month Range: with ARR" desc
+      ) as ranking_2_month
+    from combined_table_4 ct4
+  ) --Now only take the dates which are ranked 1 
+,
+  final_table_1 as (
+    select ct5.mcid,
+      ct5."Start of SST Data from UFDM",
+      ct5."Start of Data in TAT",
+      ct5."Date of Churn",
+      ct5."UFDM ARR Dates in +/- 6 Month Range: with ARR",
+      ct5."UFDM ARR Dates in +/- 2 Month Range: with ARR",
+      ct5."Abs. Difference between Churn Date and 2 Month Range"
+    from combined_table_5 ct5
+    where ranking_2_month = 1
+  ) --Joining to to UFDM ARR with PF Makeup and Ratio. 
+,
+  final_table_2 as (
+    select ft1.mcid,
+      ft1."Start of SST Data from UFDM",
+      ft1."Start of Data in TAT",
+      ft1."Date of Churn",
+      ft1."UFDM ARR Dates in +/- 6 Month Range: with ARR",
+      ua1.product_family,
+      ua1.sku,
+      ua1.date_ufdm_arr,
+      ua1."Ratio to Each PF"
+    from final_table_1 ft1
+      left join ufdm_arr_1 ua1 on ft1.mcid = ua1.mcid
+      and ft1."UFDM ARR Dates in +/- 6 Month Range: with ARR" = ua1.date_ufdm_arr --Filter on Dates
+    where ft1."UFDM ARR Dates in +/- 6 Month Range: with ARR" is not null
+  ) --We will only we be using dates within the 6 month range as it covers the 2 month range as well and casts a wider net 
+  --Produce a final table for the DEs with mcid, Date in UFDM ARR, Start of Data in TAT, Product Family Makeup and Ratio 
+  --This is the drag ratio table
+,
+  drag_ratio_c2 as --test
+  (
+    select ft2.mcid,
+      ft2."Start of Data in TAT" as "Start of Drag Ratio in TAT",
+      ft2."Date of Churn" - interval '1 month' as "End of Drag Ratio in TAT",
+      --end it before the churn date, 
+      ft2."Date of Churn" as "Churn Date in TAT",
+      (
+        (
+          ft2."UFDM ARR Dates in +/- 6 Month Range: with ARR" + interval '1 month'
+        ) - interval '1 day'
+      ) as "Date in UFDM ARR",
+      ft2.product_family as "Product Family in UFDM ARR",
+      ft2.sku,
+      ft2.date_ufdm_arr as snapshot_date_arr,
+      ft2."Ratio to Each PF" as "Ratio of ARR for Each PF in UFDM ARR"
+    from final_table_2 ft2
+  )
+  select *
+  from drag_ratio_c2
+);
+drop table if exists sandbox.drag_ratio_with_sku_with_refined_proposal;
+create table sandbox.drag_ratio_with_sku_with_refined_proposal as (
+  with combined_drag_ratio as (
+    SELECT mcid_arr,
+      "MAX Snapshot Date of TAT",
+      product_family_arr,
+      sku,
+      "Ratio of ARR Allocated to PF UFDM ARR" AS "Ratio of ARR",
+      "Date to Drag to Under Scenario 1" AS "Date to Drag: Sol. 1"
+    FROM sandbox.drag_ratio_with_sku_c1_with_flat AS a
+    UNION ALL
+    SELECT mcid AS mcid_arr,
+      "End of Drag Ratio in TAT" AS "Max Snapshot Date in TAT",
+      "Product Family in UFDM ARR" AS product_family_arr,
+      sku,
+      "Ratio of ARR for Each PF in UFDM ARR" AS "Ratio of ARR",
+      "Start of Drag Ratio in TAT" AS "Date to Drag: Sol. 1"
+    FROM sandbox.drag_ratio_with_sku_c2
+    WHERE mcid NOT IN(
+        SELECT DISTINCT mcid_arr
+        FROM sandbox.drag_ratio_with_sku_c1_with_flat
+      )
+  ),
+  remove_customer AS (
+    SELECT DISTINCT mcid_arr
+    FROM (
+        select distinct mcid_arr
+        from sandbox.drag_ratio_with_sku_c1_with_flat
+        where "Ratio of ARR Allocated to PF UFDM ARR" < 0
+        UNION ALL
+        select distinct mcid
+        from sandbox.drag_ratio_with_sku_c2
+        where "Ratio of ARR for Each PF in UFDM ARR" < 0
+      ) AS a
+  )
+  select *
+  from combined_drag_ratio
+  WHERE mcid_arr NOT IN (
+      SELECT mcid_arr
+      FROM remove_customer
+    )
+);
+Drop table if exists sandbox.drag_ration_with_sku_refined_proposal;
+CREATE TABLE sandbox.drag_ration_with_sku_refined_proposal AS (
+  with tat_info as (
+    select distinct utu."customer_name_d&b",
+      utu.parent_customer,
+      utu.parent_master_customer_id,
+      utu.customer_name,
+      utu.end_customer,
+      utu.mcid,
+      utu."Overage Y/N",
+      utu."NS ID",
+      utu.subsidiary_name,
+      --    utu.product_family, 
+      utu.currency,
+      utu.snapshot_date,
+      --    utu.arr,
+      utu.fx_rate_ccfx,
+      --    utu.arr_usd_ccfx,   
+      utu.ccfx_date,
+      utu.mcid_old,
+      utu.is_deleted,
+      utu.modified_comments
+    from ufdm.tat_upload_data utu
+    where utu.currency is not null
+      and utu.mcid is not null
+      and utu.is_deleted IS DISTINCT
+    FROM 1
+      and coalesce(nullif(trim(utu."Overage Y/N"), ''), 'N') is distinct
+    from 'Y'
+      and not (
+        date_trunc('month', snapshot_date) = '2021-12-01'::DATE
+        AND product_family ilike '%Campaign%'
+      )
+  ),
+  combined_table_1 as (
+    select t1."customer_name_d&b",
+      t1.parent_customer,
+      t1.parent_master_customer_id,
+      t1.customer_name,
+      t1.end_customer,
+      t1.mcid,
+      t1."Overage Y/N",
+      t1."NS ID",
+      t1.subsidiary_name,
+      --    t1.product_family,  
+      t1.currency,
+      t1.snapshot_date,
+      --    t1.arr,
+      t1.fx_rate_ccfx,
+      --    t1.arr_usd_ccfx,    
+      t1.ccfx_date,
+      t1.mcid_old,
+      t1.is_deleted,
+      t1.modified_comments,
+      dr."MAX Snapshot Date of TAT",
+      dr.product_family_arr,
+      dr.sku,
+      dr."Ratio of ARR" as "Original Ratio",
+      dr."Date to Drag: Sol. 1" as "Date to Drag to Under Scenario 1",
+      row_number() over(
+        partition by t1.mcid,
+        t1.snapshot_date,
+        dr.product_family_arr,
+        dr.sku
+        order by t1.mcid
+      ) as "Row Number of PF"
+    from tat_info t1
+      inner join sandbox.drag_ratio_with_sku_with_refined_proposal dr on t1.mcid = dr.mcid_arr
+  ),
+  combined_table_2 as (
+    select ct1."customer_name_d&b",
+      ct1.parent_customer,
+      ct1.parent_master_customer_id,
+      ct1.customer_name,
+      ct1.end_customer,
+      ct1.mcid,
+      ct1."Overage Y/N",
+      ct1."NS ID",
+      ct1.subsidiary_name,
+      --    ct1.product_family, 
+      ct1.currency,
+      ct1.snapshot_date,
+      --    ct1.arr,
+      ct1.fx_rate_ccfx,
+      --    ct1.arr_usd_ccfx,   
+      ct1.ccfx_date,
+      ct1.mcid_old,
+      ct1.is_deleted,
+      ct1.modified_comments,
+      ct1."MAX Snapshot Date of TAT",
+      ct1.product_family_arr,
+      ct1.sku,
+      ct1."Original Ratio",
+      ct1."Date to Drag to Under Scenario 1",
+      max(ct1."Row Number of PF") over(
+        partition by mcid,
+        ct1.snapshot_date,
+        product_family_arr,
+        sku
+      ) as "No of Rows Per PF"
+    from combined_table_1 ct1
+  ),
+  comibined_table_2a as (
+    select ct1."customer_name_d&b",
+      ct1.parent_customer,
+      ct1.parent_master_customer_id,
+      ct1.customer_name,
+      ct1.end_customer,
+      ct1.mcid,
+      ct1."Overage Y/N",
+      ct1."NS ID",
+      ct1.subsidiary_name,
+      --    ct1.product_family, 
+      ct1.currency,
+      ct1.snapshot_date,
+      --    ct1.arr,
+      ct1.fx_rate_ccfx,
+      --    ct1.arr_usd_ccfx,   
+      ct1.ccfx_date,
+      ct1.mcid_old,
+      ct1.is_deleted,
+      ct1.modified_comments,
+      ct1."MAX Snapshot Date of TAT",
+      ct1.product_family_arr,
+      ct1.sku,
+      ct1."Original Ratio",
+      ct1."Date to Drag to Under Scenario 1",
+      ct1."No of Rows Per PF"
+    from combined_table_2 ct1 --Get rid of Campaign in Dec 2021 if it's copied over from UFDM ARR. Campaign does not come from TAT in Dec 2021. Therefore ratios in Dec 2021 should be done without Campaign
+    where not (
+        date_trunc('month', snapshot_date) = '2021-12-01'::DATE
+        AND product_family_arr ilike 'Recurring: Cloud: Other Bookings: Campaign'
+      )
+  ),
+  combined_table_3 as (
+    select ct2."customer_name_d&b",
+      ct2.parent_customer,
+      ct2.parent_master_customer_id,
+      ct2.customer_name,
+      ct2.end_customer,
+      ct2.mcid,
+      ct2."Overage Y/N",
+      ct2."NS ID",
+      ct2.subsidiary_name,
+      --    ct2.product_family, 
+      ct2.currency,
+      ct2.snapshot_date,
+      --    ct2.arr,
+      ct2.fx_rate_ccfx,
+      --    ct2.arr_usd_ccfx,   
+      ct2.ccfx_date,
+      ct2.mcid_old,
+      ct2.is_deleted,
+      ct2.modified_comments,
+      ct2."MAX Snapshot Date of TAT",
+      ct2.product_family_arr,
+      ct2.sku,
+      ct2."Original Ratio",
+      ct2."Date to Drag to Under Scenario 1",
+      --Calculate the new ratios 
+      --If it's not Dec 2021, then original ratio divided by number of rows 
+      --If it's Dec 2021, since we got rid of campaign, get ratio of ratios 
+      case
+        when date_trunc('MONTH', snapshot_date) != '2021-12-01' then ct2."Original Ratio" / ct2."No of Rows Per PF"
+        when date_trunc('MONTH', snapshot_date) = '2021-12-01' then ct2."Original Ratio" /(
+          sum(ct2."Original Ratio") over(partition by ct2.mcid, ct2.snapshot_date)
+        )
+      end as "New Ratio Per Date for TAT"
+    from comibined_table_2a ct2
+    where ct2.snapshot_date <= ct2."MAX Snapshot Date of TAT"::DATE
+      and ct2.snapshot_date >= ct2."Date to Drag to Under Scenario 1"::DATE
+  ) --This is the final drag ration table 
+,
+  drag_ration_unified as (
+    select ct3."customer_name_d&b",
+      ct3.parent_customer,
+      ct3.parent_master_customer_id,
+      ct3.customer_name,
+      ct3.end_customer,
+      ct3.mcid,
+      ct3."Overage Y/N",
+      ct3."NS ID",
+      ct3.subsidiary_name,
+      --    ct3.product_family, 
+      ct3.currency,
+      ct3.snapshot_date,
+      --    ct3.arr,
+      ct3.fx_rate_ccfx,
+      --    ct3.arr_usd_ccfx,   
+      ct3.ccfx_date,
+      ct3.mcid_old,
+      ct3.is_deleted,
+      ct3.modified_comments,
+      ct3."MAX Snapshot Date of TAT",
+      ct3.product_family_arr,
+      ct3.sku,
+      ct3."Original Ratio",
+      ct3."Date to Drag to Under Scenario 1",
+      ct3."New Ratio Per Date for TAT",
+      sum(ct3."New Ratio Per Date for TAT") over(partition by ct3.mcid, ct3.snapshot_date) as "Sum of Ratios Per MCID and Snapshot Date"
+    from combined_table_3 ct3
+  ) --Table for Drag Ration: Use this to create drag ration 
+  select *
+  from drag_ration_unified
+);
+DROP TABLE IF EXISTS sandbox.tat_with_sku_with_refined_proposal;
+CREATE TABLE sandbox.tat_with_sku_with_refined_proposal as (
+  with edit_tat as (
+    select *
+    from ufdm.tat_upload_data tat
+    where tat.is_deleted IS DISTINCT
+    FROM 1
+      and coalesce(nullif(trim(tat."Overage Y/N"), ''), 'N') is distinct
+    from 'Y'
+      and not (
+        date_trunc('month', snapshot_date) = '2021-12-01'::DATE
+        AND product_family ilike '%Campaign%'
+      )
+  ),
+  tat_change_1 as (
+    select distinct mcid,
+      snapshot_date,
+      product_family,
+      '' as sku,
+      currency,
+      sum(arr) over(
+        partition by mcid,
+        snapshot_date,
+        product_family,
+        currency
+      ) as arr,
+      sum(arr_usd_ccfx) over(
+        partition by mcid,
+        snapshot_date,
+        product_family,
+        currency
+      ) as arr_usd_ccfx
+    from edit_tat
+  ),
+  tat_change_2 as (
+    select distinct tc1.mcid,
+      tc1.snapshot_date,
+      sum(tc1.arr) over(
+        partition by tc1.mcid,
+        tc1.snapshot_date
+      ) as "ARR:Local Currency",
+      sum(tc1.arr_usd_ccfx) over(
+        partition by tc1.mcid,
+        tc1.snapshot_date
+      ) as "ARR:USD CCFX"
+    from tat_change_1 tc1
+    where arr >= 0
+  ) --Now take the sandbox.drag_ration_3 table and append ending ARR to 
+,
+  tat_change_3 as (
+    select sdr3."customer_name_d&b",
+      sdr3.parent_customer,
+      sdr3.parent_master_customer_id,
+      sdr3.customer_name,
+      sdr3.end_customer,
+      sdr3.mcid,
+      sdr3."Overage Y/N",
+      sdr3."NS ID",
+      sdr3.subsidiary_name,
+      sdr3.currency,
+      sdr3.snapshot_date,
+      sdr3.fx_rate_ccfx,
+      sdr3.ccfx_date,
+      sdr3.mcid_old,
+      sdr3.is_deleted,
+      sdr3.modified_comments,
+      sdr3."MAX Snapshot Date of TAT",
+      sdr3.product_family_arr,
+      sdr3.sku,
+      sdr3."Original Ratio",
+      sdr3."Date to Drag to Under Scenario 1",
+      sdr3."New Ratio Per Date for TAT",
+      sdr3."Sum of Ratios Per MCID and Snapshot Date",
+      tc2."ARR:Local Currency",
+      tc2."ARR:USD CCFX"
+    from sandbox.drag_ration_with_sku_refined_proposal sdr3
+      inner join tat_change_2 tc2 on tc2.mcid = sdr3.mcid
+      and tc2.snapshot_date = sdr3.snapshot_date --For Scenario 1 
+    where sdr3.snapshot_date >= sdr3."Date to Drag to Under Scenario 1"::DATE
+  ) --select 
+  --  *
+  --from 
+  --  tat_change_3 
+  --where 
+  --  mcid = 'd75409e0-c8f2-e711-811d-70106faa0841'
+  --select 
+  --  *
+  --from 
+  --  ufdm.tat_upload_data tud 
+  --where 
+  --  mcid = '03c69ff6-a949-ea11-a812-000d3a228882'
+  --and 
+  --  date_trunc('MONTH', snapshot_date) = '2021-02-01' 
+  --This is the final tat to be changed. It has the same structure as original TAT 
+,
+  tat_change_4 as (
+    select tc3."customer_name_d&b",
+      tc3.parent_customer,
+      tc3.parent_master_customer_id,
+      tc3.customer_name,
+      tc3.end_customer,
+      tc3.mcid,
+      tc3."Overage Y/N",
+      tc3."NS ID",
+      tc3.subsidiary_name,
+      tc3.product_family_arr as product_family,
+      tc3.sku,
+      --new product family of TAT 
+      tc3.currency,
+      tc3.snapshot_date,
+      (
+        tc3."ARR:Local Currency" * tc3."New Ratio Per Date for TAT"
+      ) as arr,
+      -- new local currency arr of TAT 
+      tc3.fx_rate_ccfx,
+      (
+        tc3."ARR:USD CCFX" * tc3."New Ratio Per Date for TAT"
+      ) as arr_usd_ccfx,
+      --new arr_usd_ccfx of TAT 
+      tc3.ccfx_date,
+      tc3.mcid_old,
+      tc3.is_deleted,
+      tc3.modified_comments
+    from tat_change_3 tc3
+  ) --select 
+  --  *
+  --from 
+  --  tat_change_4 
+  --where 
+  --  mcid = 'abf9133d-75e4-e411-9afb-0050568d2da8'
+  --select 
+  --  *,
+  --  sum(arr) over(partition by mcid, snapshot_date) as sum_arr,
+  --  sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_arr_usd_ccfx
+  --from 
+  --  tat_change_4 
+  --where 
+  --  mcid = '1f6370ef-dbaf-e311-a1cd-0050568d2da8'
+  --  and 
+  --  date_trunc('MONTH', snapshot_date) = '2019-01-01'
+  --Make sure ending ARRs match 
+  --Running Tests 
+,
+  test_1 as (
+    select distinct mcid as mcid_nt,
+      snapshot_date as snapshot_date_nt,
+      sum(arr_usd_ccfx) over(partition by mcid, snapshot_date) as sum_new_tat_ccfx,
+      sum(arr) over(partition by mcid, snapshot_date) as sum_new_tat_lc
+    from tat_change_4
+  ) --select 
+  --  t1.mcid_nt,
+  --  t1.snapshot_date_nt,
+  --  t1.sum_new_tat_ccfx,
+  --  t1.sum_new_tat_lc, 
+  --  tc2."ARR:USD CCFX",
+  --  tc2."ARR:Local Currency"
+  --from 
+  --  test_1 t1
+  --inner join 
+  --  tat_change_2 tc2
+  --      on 
+  --          t1.mcid_nt = tc2.mcid
+  --          and 
+  --          t1.snapshot_date_nt = tc2.snapshot_date 
+  --where 
+  --  abs(tc2."ARR:USD CCFX"-t1.sum_new_tat_ccfx) > 1
+  --Now union to TAT that does not change. Take all the mcids and dates that are not present in sandbox ratio
+,
+  tat_no_change as (
+    select st7."customer_name_d&b",
+      st7.parent_customer,
+      st7.parent_master_customer_id,
+      st7.customer_name,
+      st7.end_customer,
+      st7.mcid,
+      st7."Overage Y/N",
+      st7."NS ID",
+      st7.subsidiary_name,
+      st7.product_family,
+      ' ' AS sku,
+      st7.currency,
+      st7.snapshot_date,
+      st7.arr,
+      st7.fx_rate_ccfx,
+      st7.arr_usd_ccfx,
+      st7.ccfx_date,
+      st7.mcid_old,
+      st7.is_deleted,
+      st7.modified_comments
+    from edit_tat st7
+      left join sandbox.drag_ration_with_sku_refined_proposal sdr2 on st7.mcid = sdr2.mcid
+      and st7.snapshot_date = sdr2.snapshot_date --For Scenario 1 
+    where sdr2.mcid is null
+  ) --Now union the 2 tables 
+,
+  combined_table_1 as (
+    (
+      select tc4."customer_name_d&b",
+        tc4.parent_customer,
+        tc4.parent_master_customer_id,
+        tc4.customer_name,
+        tc4.end_customer,
+        tc4.mcid,
+        tc4."Overage Y/N",
+        tc4."NS ID",
+        tc4.subsidiary_name,
+        tc4.product_family,
+        --new product family of TAT 
+        tc4.sku,
+        tc4.currency,
+        tc4.snapshot_date,
+        tc4.arr,
+        -- new local currency arr of TAT 
+        tc4.fx_rate_ccfx,
+        tc4.arr_usd_ccfx,
+        --new arr_usd_ccfx of TAT 
+        tc4.ccfx_date,
+        tc4.mcid_old,
+        tc4.is_deleted,
+        tc4.modified_comments
+      from tat_change_4 tc4
+    )
+    union all
+    (
+      select tcn."customer_name_d&b",
+        tcn.parent_customer,
+        tcn.parent_master_customer_id,
+        tcn.customer_name,
+        tcn.end_customer,
+        tcn.mcid,
+        tcn."Overage Y/N",
+        tcn."NS ID",
+        tcn.subsidiary_name,
+        tcn.product_family,
+        tcn.sku,
+        tcn.currency,
+        tcn.snapshot_date,
+        tcn.arr,
+        tcn.fx_rate_ccfx,
+        tcn.arr_usd_ccfx,
+        tcn.ccfx_date,
+        tcn.mcid_old,
+        tcn.is_deleted,
+        tcn.modified_comments
+      from tat_no_change tcn
+    )
+  ) --select 
+  --  *
+  --from 
+  --  combined_table_1
+,
+  new_prod_tat as (
+    select ct1."customer_name_d&b",
+      ct1.parent_customer,
+      ct1.parent_master_customer_id,
+      ct1.customer_name,
+      ct1.end_customer,
+      ct1.mcid,
+      ct1."Overage Y/N",
+      ct1."NS ID",
+      ct1.subsidiary_name,
+      ct1.product_family,
+      ct1.sku,
+      ct1.currency,
+      ct1.snapshot_date,
+      ct1.arr,
+      ct1.fx_rate_ccfx,
+      ct1.arr_usd_ccfx,
+      ct1.ccfx_date,
+      ct1.mcid_old,
+      ct1.is_deleted,
+      ct1.modified_comments
+    from combined_table_1 ct1
+    order by ct1.mcid,
+      ct1.snapshot_date
+  ) --New TAT Table: Solution 1 for Cohort 2
+  --
+  select *
+  from new_prod_tat
 );

@@ -109,7 +109,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku_c2 AS (
       min(snapshot_date) filter(
         where arr > 0
       ) over(partition by mcid) as "Start of SST Data from UFDM"
-    from ufdm.sst
+    from sandbox.sst_temp
     where record_source ilike 'ufdm_2022'
       and product_family not in (
         'Full Stack',
@@ -138,7 +138,7 @@ CREATE TABLE sandbox.drag_ratio_with_sku_c2 AS (
   unbund_arr as (
     select *,
       abs(arr_usd_ccfx) as abs_arr_usd_ccfx
-    from sandbox.arr_unbund
+    from sandbox_pd.arr
   ),
   ufdm_arr_0 as (
     select distinct mcid,

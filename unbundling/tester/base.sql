@@ -1,14 +1,6 @@
-create or replace function ryzlan.sp_populate_product_family_TAG_churn_migration(var_period text) returns void language plpgsql as $$ BEGIN
-DELETE from ryzlan.sst_product_bridge_product_family_Tag_CM
+create or replace function ryzlan.sp_populate_product_family_churn_migration(var_period text) returns void language plpgsql as $$ BEGIN
+DELETE from ryzlan.sst_product_bridge_product_family_CM
 where evaluation_period = var_period;
-drop table if exists sst_temp;
-create temp table sst_temp as
-Select *,
-  CASE
-    WHEN migration_from = 'Y' THEN 'Legacy'
-    WHEN migration_to = 'Y' THEN 'Named'
-  END AS tag
-from ufdm.sst;
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --SST product Bridge
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -19,11 +11,10 @@ SELECT snapshot_date,
   product_family as product_family,
   updated_product_group as product_group,
   a.base_currency as baseline_currency,
-  tag,
   max(coalesce(a.end_name, a.parent_name)) as end_customer,
   sum(arr) AS arr_usd_ccfx,
   sum(baseline_arr_local_currency) AS arr_lcu
-FROM sst_temp a
+FROM sandbox_pd.sst a
 WHERE 1 = 1
   AND snapshot_date = (
     SELECT prior_period
@@ -36,8 +27,7 @@ GROUP BY 1,
   2,
   3,
   4,
-  5,
-  6;
+  5;
 drop table if exists current_period_customer_arr_tmp;
 create temp table current_period_customer_arr_tmp as
 SELECT snapshot_date,
@@ -45,11 +35,10 @@ SELECT snapshot_date,
   product_family as product_family,
   updated_product_group as product_group,
   a.base_currency as baseline_currency,
-  tag,
   max(coalesce(a.end_name, a.parent_name)) as end_customer,
   sum(arr) AS arr_usd_ccfx,
   sum(baseline_arr_local_currency) AS arr_lcu
-FROM sst_temp a
+FROM sandbox_pd.sst a
 WHERE 1 = 1
   AND snapshot_date = (
     SELECT current_period
@@ -62,8 +51,7 @@ GROUP BY 1,
   2,
   3,
   4,
-  5,
-  6;
+  5;
 drop table if exists customer_level_arr_tmp;
 create temp table customer_level_arr_tmp as
 SELECT c1.master_customer_id AS current_cust_id,
@@ -75,8 +63,6 @@ SELECT c1.master_customer_id AS current_cust_id,
   c1.baseline_currency as current_baseline_currency,
   c2.baseline_currency as prior_baseline_currency,
   COALESCE(c1.baseline_currency, c2.baseline_currency) AS baseline_currency,
-  c1.tag as current_tag,
-  c2.tag as prior_tag,
   c2.product_family AS prior_product_family,
   c1.product_family AS current_product_family,
   c2.product_group as prior_product_group,
@@ -88,8 +74,7 @@ SELECT c1.master_customer_id AS current_cust_id,
 FROM current_period_customer_arr_tmp c1
   FULL OUTER JOIN prior_period_customer_arr_tmp c2 ON c1.master_customer_id = c2.master_customer_id
   and c1.product_family = c2.product_family
-  and c1.baseline_currency = c2.baseline_currency
-  and c1.tag = c2.tag;
+  and c1.baseline_currency = c2.baseline_currency;
 ------------------------------------------
 -- Evaluate
 ------------------------------------------
@@ -105,8 +90,6 @@ SELECT per.evaluation_period,
   cla.prior_product_family as prior_product_family,
   cla.current_product_group,
   cla.prior_product_group,
-  cla.current_tag,
-  cla.prior_tag,
   cla.current_end_customer,
   cla.prior_end_customer,
   cla.baseline_currency,
@@ -203,7 +186,6 @@ create temp table arr_new_products_tmp AS
 select a.current_master_customer_id as mcid,
   a.current_product_family as product_family,
   a.current_product_group as product_group,
-  a.current_tag as tag,
   a.current_period as snapshot_date,
   a.current_arr_usd_ccfx as arr_at_new,
   a.current_arr_lcu as arr_lcu_at_new,
@@ -217,7 +199,6 @@ create temp table arr_churned_products_tmp AS with temp as (
     b.mcid,
     b.product_family as product_family,
     b.updated_product_group as product_group,
-    b.tag,
     a.baseline_currency,
     a.snapshot_date as snapshot_date_at_new,
     sum(b.arr) as arr_at_churn,
@@ -226,8 +207,7 @@ create temp table arr_churned_products_tmp AS with temp as (
     sum(a.arr_lcu_at_new) as arr_lcu_at_new,
     row_number() over (
       partition by b.mcid,
-      b.product_family,
-      b.tag
+      b.product_family
       order by b.snapshot_date desc
     ) as rnk
   from arr_new_products_tmp a
@@ -237,22 +217,19 @@ create temp table arr_churned_products_tmp AS with temp as (
         sb.overage_flag,
         sb.product_family,
         sb.updated_product_group,
-        sb.tag,
         sb.base_currency,
         sum(arr) as arr,
         sum(baseline_arr_local_currency) as baseline_arr_local_currency
-      from sst_temp sb
+      from sandbox_pd.sst sb
       group by 1,
         2,
         3,
         4,
         5,
-        6,
-        7
+        6
     ) b on a.mcid = b.mcid --and a.product_family = b.product_family
     and a.product_family = b.product_family
     and a.product_group = b.updated_product_group
-    and a.tag = b.tag
     and a.baseline_currency = b.base_currency
   where b.snapshot_date < a.snapshot_date
     and b.overage_flag ilike '%N%'
@@ -262,8 +239,7 @@ create temp table arr_churned_products_tmp AS with temp as (
     3,
     4,
     5,
-    6,
-    7
+    6
 )
 select *,
 (
@@ -295,7 +271,7 @@ where rnk = 1
     from snapshot_date_at_new::timestamp - (snapshot_date + INTERVAL '1 month')::date
   ) < 186;
 -- create index if not exists nci_arr_churned_products_tmp_tmp_composite on arr_churned_products_tmp(mcid,product_family,baseline_currency,snapshot_date_at_new) include(arr_at_new, arr_at_churn);
-INSERT INTO ryzlan.sst_product_bridge_product_family_Tag_CM (
+INSERT INTO ryzlan.sst_product_bridge_product_family_CM (
     evaluation_period,
     prior_period,
     current_period,
@@ -308,8 +284,6 @@ INSERT INTO ryzlan.sst_product_bridge_product_family_Tag_CM (
     prior_product_family,
     current_product_group,
     prior_product_group,
-    current_tag,
-    prior_tag,
     --         "name",
     prior_period_product_arr_usd_ccfx,
     current_period_product_arr_usd_ccfx,
@@ -337,8 +311,6 @@ SELECT a.evaluation_period,
   a.prior_product_family,
   a.current_product_group,
   a.prior_product_group,
-  a.current_tag,
-  a.prior_tag,
   --         "name",
   round(a.prior_arr_usd_ccfx::numeric, 2) AS prior_period_customer_arr_usd_ccfx,
   --round(a.current_arr_usd_ccfx::numeric,2) AS current_period_customer_arr_usd_ccfx,
@@ -392,7 +364,6 @@ FROM arr_product_bridge_tmp a
   left join arr_churned_products_tmp b on a.current_master_customer_id = b.mcid
   and a.current_product_family = b.product_family
   and a.current_product_group = b.product_group
-  and a.current_tag = b.tag
   and a.baseline_currency = b.baseline_currency
   and a.current_period = b.snapshot_date_at_new
 union all
@@ -408,8 +379,6 @@ SELECT a.evaluation_period,
   a.prior_product_family,
   a.current_product_group,
   a.prior_product_group,
-  a.current_tag,
-  a.prior_tag,
   --         "name",
   round(a.prior_arr_usd_ccfx::numeric, 2) AS prior_period_customer_arr_usd_ccfx,
   b.arr_diff as current_period_customer_arr_usd_ccfx,
@@ -428,13 +397,12 @@ FROM arr_product_bridge_tmp a
   join arr_churned_products_tmp b on a.current_master_customer_id = b.mcid
   and a.current_product_family = b.product_family
   and a.current_product_group = b.product_group
-  and a.current_tag = b.tag
   and a.baseline_currency = b.baseline_currency
   and a.current_period = b.snapshot_date_at_new
 where b.arr_at_new > b.arr_at_churn;
 RAISE NOTICE 'Running customer bridge update on sst product bridge...';
 --update customer bridge and subsidiary entity
-update ryzlan.sst_product_bridge_product_family_Tag_CM a
+update ryzlan.sst_product_bridge_product_family_CM a
 set customer_bridge = b.customer_bridge
 from sandbox_pd.sst_customer_bridge b
 where 1 = 1
@@ -454,7 +422,7 @@ total_arr as (
     a.snapshot_date,
     a.subsidiary_entity_name,
     sum(a.arr) as total_arr
-  from sst_temp a
+  from sandbox_pd.sst_adhoc a
     join mcid_list b on a.mcid = b.master_customer_id
     and a.snapshot_date in (
       SELECT prior_period
@@ -482,14 +450,14 @@ from sub_entity
 where rnk = 1;
 RAISE NOTICE 'Running sub entity update on sst product bridge...';
 create index nci_sub_entity_tmp_mcid on sub_entity_tmp(mcid);
-update ryzlan.sst_product_bridge_product_family_Tag_CM a
+update ryzlan.sst_product_bridge_product_family_CM a
 set subsidiary_entity_name = b.subsidiary_entity_name
 from sub_entity_tmp b
 where a.mcid = b.mcid
   and a.evaluation_period = var_period;
 RAISE NOTICE 'Running Price Increase update on sst product bridge...';
 --Price Increase updates
-update ryzlan.sst_product_bridge_product_family_Tag_CM
+update ryzlan.sst_product_bridge_product_family_CM
 set product_bridge = 'CPI'
 where product_bridge = 'Up Sell'
   and prior_period_product_arr_usd_ccfx > 0
@@ -514,9 +482,8 @@ create temp table temp_win_downgrade_upsell as with temp1 as (
     a.current_period as snapshot_date_at_upsell,
     a.product_arr_change_ccfx as Upsell_arr,
     a.current_product_family,
-    a.current_product_group,
-    a.current_tag
-  from ryzlan.sst_product_bridge_product_family_Tag_CM a
+    a.current_product_group
+  from ryzlan.sst_product_bridge_product_family_CM a
   where 1 = 1
     and a.product_bridge = 'Up Sell'
     and a.evaluation_period = var_period
@@ -533,20 +500,17 @@ temp2 as (
     b.product_bridge as Downgrade_bridge,
     a.current_product_family,
     a.current_product_group,
-    a.current_tag,
     row_number() over (
       partition by a.mcid,
       a.evaluation_period_at_upsell,
-      a.current_product_family,
-      a.current_tag
+      a.current_product_family
       order by b.current_period desc,
         a.snapshot_date_at_upsell
     ) as rnk
-  from ryzlan.sst_product_bridge_product_family_Tag_CM b
+  from ryzlan.sst_product_bridge_product_family_CM b
     join temp1 a on a.mcid = b.mcid
     and a.current_product_family = b.current_product_family
     and a.current_product_group = b.current_product_group
-    and a.current_tag = b.current_tag
   where 1 = 1
     and b.product_bridge = 'Downgrade'
     and b.current_period < (
@@ -564,8 +528,7 @@ create temporary table temp_windowngrade_final as with temp1 as (
     row_number() over (
       partition by mcid,
       Downgrade_evaluation_period,
-      current_product_family,
-      current_tag
+      current_product_family
       order by snapshot_date_at_upsell
     ) as rnk2
   from temp_win_downgrade_upsell
@@ -589,20 +552,18 @@ select a.mcid,
   b.Downgrade_evaluation_period,
   b.Downgrade_bridge,
   a.current_product_family,
-  a.current_product_group,
-  a.current_tag
-from ryzlan.sst_product_bridge_product_family_Tag_CM a,
+  a.current_product_group
+from ryzlan.sst_product_bridge_product_family_CM a,
   temp2 b
 where 1 = 1
   and a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period_at_upsell
   and a.current_product_family = b.current_product_family
   and a.current_product_group = b.current_product_group
-  and a.current_tag = b.current_tag
   and a.product_bridge in ('Up Sell')
   and a.evaluation_period = var_period;
 RAISE NOTICE 'Running WINBACK Downgrade update on sst product group bridge 2...';
-update ryzlan.sst_product_bridge_product_family_Tag_CM a
+update ryzlan.sst_product_bridge_product_family_CM a
 set product_bridge = 'Win back Downgrade'
 from temp_windowngrade_final b
 where 1 = 1
@@ -610,7 +571,6 @@ where 1 = 1
   and a.evaluation_period = b.evaluation_period
   and a.current_product_family = b.current_product_family
   and a.current_product_group = b.current_product_group
-  and a.current_tag = b.current_tag
   and a.evaluation_period = var_period
   and a.product_bridge = 'Up Sell'
   and Split_record = 0;
@@ -629,8 +589,6 @@ select distinct a.evaluation_period,
   a.prior_product_family,
   a.current_product_group,
   a.prior_product_group,
-  a.current_tag,
-  a.prior_tag,
   a.currency_code,
 case
     when a.product_bridge = 'Churn' then a.prior_period_product_arr_usd_ccfx - c.product_arr_change_ccfx
@@ -658,17 +616,15 @@ case
   a.subsidiary_entity_name,
   a.churn_period,
   a.customer_bridge
-from ryzlan.sst_product_bridge_product_family_Tag_CM a
+from ryzlan.sst_product_bridge_product_family_CM a
   join temp_windowngrade_final b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
   and a.current_product_family = b.current_product_family
   and a.current_product_group = b.current_product_group
-  and a.current_tag = b.current_tag
-  join ryzlan.sst_product_bridge_product_family_Tag_CM c on c.mcid = b.mcid
+  join ryzlan.sst_product_bridge_product_family_CM c on c.mcid = b.mcid
   and c.evaluation_period = b.Downgrade_evaluation_period
   and c.current_product_family = b.current_product_family
   and a.current_product_group = b.current_product_group
-  and a.current_tag = b.current_tag
   and c.product_bridge = 'Downgrade'
 where b.Split_record = 1
   and a.evaluation_period = var_period
@@ -686,8 +642,6 @@ select distinct a.evaluation_period,
   a.prior_product_family,
   a.current_product_group,
   a.prior_product_group,
-  a.current_tag,
-  a.prior_tag,
   a.currency_code,
   c.current_period_product_arr_usd_ccfx as prior_period_product_arr_usd_ccfx,
   c.prior_period_product_arr_usd_ccfx as current_period_product_arr_usd_ccfx,
@@ -702,24 +656,22 @@ select distinct a.evaluation_period,
   a.subsidiary_entity_name,
   a.churn_period,
   a.customer_bridge
-from ryzlan.sst_product_bridge_product_family_Tag_CM a
+from ryzlan.sst_product_bridge_product_family_CM a
   join temp_windowngrade_final b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
   and a.current_product_family = b.current_product_family
   and a.current_product_group = b.current_product_group
-  and a.current_tag = b.current_tag
-  join ryzlan.sst_product_bridge_product_family_Tag_CM c on c.mcid = b.mcid
+  join ryzlan.sst_product_bridge_product_family_CM c on c.mcid = b.mcid
   and c.evaluation_period = b.Downgrade_evaluation_period
   and c.current_product_family = b.current_product_family
   and a.current_product_group = b.current_product_group
-  and a.current_tag = b.current_tag
   and c.product_bridge = 'Downgrade'
 where b.Split_record = 1
   and a.evaluation_period = var_period
   and a.product_bridge = 'Up Sell'
 order by mcid;
 RAISE NOTICE 'Running WINBACK Downgrade update on sst product group bridge 4...';
-delete from ryzlan.sst_product_bridge_product_family_Tag_CM a using temp_windowngrade_final b
+delete from ryzlan.sst_product_bridge_product_family_CM a using temp_windowngrade_final b
 where 1 = 1
   and a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
@@ -727,9 +679,8 @@ where 1 = 1
   and a.evaluation_period = var_period
   and a.current_product_family = b.current_product_family
   and a.current_product_group = b.current_product_group
-  and a.current_tag = b.current_tag
   and a.product_bridge = 'Up Sell';
-insert into ryzlan.sst_product_bridge_product_family_Tag_CM (
+insert into ryzlan.sst_product_bridge_product_family_CM (
     evaluation_period,
     prior_period,
     current_period,
@@ -742,8 +693,6 @@ insert into ryzlan.sst_product_bridge_product_family_Tag_CM (
     prior_product_family,
     current_product_group,
     prior_product_group,
-    current_tag,
-    prior_tag,
     currency_code,
     prior_period_product_arr_usd_ccfx,
     current_period_product_arr_usd_ccfx,
@@ -771,8 +720,6 @@ select evaluation_period,
   prior_product_family,
   current_product_group,
   prior_product_group,
-  current_tag,
-  prior_tag,
   currency_code,
   prior_period_product_arr_usd_ccfx,
   current_period_product_arr_usd_ccfx,
@@ -799,11 +746,8 @@ create table temp_CPI_Rev_pg as with temp1 as (
     a.evaluation_period as evaluation_period_at_Downgrade_Churn,
     p.current_period as snapshot_date_at_Downgrade_Churn,
     product_arr_change_ccfx as current_arr_at_Downgrade_Churn,
-    coalesce(
-      concat(a.current_product_family, a.current_tag),
-      concat(a.prior_product_family, a.prior_tag)
-    ) as product_group_at_Downgrade_Churn
-  from ryzlan.sst_product_bridge_product_family_Tag_CM a
+    coalesce(a.current_product_family, a.prior_product_family) as product_group_at_Downgrade_Churn
+  from ryzlan.sst_product_bridge_product_family_CM a
     join ufdm_grey.periods p on a.evaluation_period = p.evaluation_period
   where 1 = 1
     and a.evaluation_period = var_period
@@ -820,17 +764,16 @@ temp2 as (
     b.product_bridge as CPI_bridge,
     b.evaluation_period as CPI_evaluation_period,
     a.product_group_at_Downgrade_Churn,
-    concat(b.current_product_family, b.current_tag) as product_group_at_CPI,
+    b.current_product_family as product_group_at_CPI,
     row_number() over (
       partition by b.mcid,
       a.evaluation_period_at_Downgrade_Churn,
-      current_product_family,
-      current_tag
+      current_product_family
       order by b.current_period desc
     ) as rnk
-  from ryzlan.sst_product_bridge_product_family_Tag_CM b
+  from ryzlan.sst_product_bridge_product_family_CM b
     join temp1 a on a.mcid = b.mcid
-    and a.product_group_at_Downgrade_Churn = concat(b.current_product_family, b.current_tag)
+    and a.product_group_at_Downgrade_Churn = b.current_product_family
   where 1 = 1
     and b.product_bridge = 'CPI'
     and b.current_period < (
@@ -860,28 +803,23 @@ select a.mcid,
   end as Split_record,
   b.CPI_evaluation_period,
   b.CPI_bridge,
-  a.current_product_family,
-  a.current_tag
-from ryzlan.sst_product_bridge_product_family_Tag_CM a,
+  a.current_product_family
+from ryzlan.sst_product_bridge_product_family_CM a,
   temp_windowngrade b
 where 1 = 1
   and a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period_at_Downgrade_Churn
-  and coalesce(
-    concat(a.current_product_family, a.current_tag),
-    concat(a.prior_product_family, a.prior_tag)
-  ) = b.product_group_at_CPI
+  and coalesce (a.current_product_family, a.prior_product_family) = b.product_group_at_CPI
   and a.product_bridge in ('Downgrade', 'Churn')
   and a.evaluation_period = var_period;
 RAISE NOTICE 'Running CPI Reversal update on sst customer bridge 2...';
-update ryzlan.sst_product_bridge_product_family_Tag_CM a
+update ryzlan.sst_product_bridge_product_family_CM a
 set product_bridge = 'CPI Reversal'
 from temp_CPI_Reversal b
 where 1 = 1
   and a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
   and coalesce(a.current_product_family, a.prior_product_family) = b.current_product_family
-  and coalesce(a.current_tag, a.prior_tag) = b.current_tag
   and a.evaluation_period = var_period
   and b.Split_record = 0
   and a.product_bridge in ('Downgrade', 'Churn');
@@ -900,8 +838,6 @@ select distinct a.evaluation_period,
   a.prior_product_family,
   a.current_product_group,
   a.prior_product_group,
-  a.current_tag,
-  a.prior_tag,
   a.currency_code,
 case
     when a.product_bridge = 'Churn' then a.prior_period_product_arr_usd_ccfx - c.product_arr_change_ccfx
@@ -929,15 +865,13 @@ case
   a.subsidiary_entity_name,
   a.churn_period,
   a.customer_bridge
-from ryzlan.sst_product_bridge_product_family_Tag_CM a
+from ryzlan.sst_product_bridge_product_family_CM a
   join temp_CPI_Reversal b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
   and coalesce(a.current_product_family, a.prior_product_family) = b.current_product_family
-  and coalesce(a.current_tag, a.prior_tag) = b.current_tag
-  join ryzlan.sst_product_bridge_product_family_Tag_CM c on c.mcid = b.mcid
+  join ryzlan.sst_product_bridge_product_family_CM c on c.mcid = b.mcid
   and c.evaluation_period = b.CPI_evaluation_period
   and coalesce(c.current_product_family, c.prior_product_family) = b.current_product_family
-  and coalesce(a.current_tag, a.prior_tag) = b.current_tag
   and c.product_bridge = 'CPI'
 where b.Split_record = 1
   and a.evaluation_period = var_period
@@ -955,8 +889,6 @@ select distinct a.evaluation_period,
   a.prior_product_family,
   a.current_product_group,
   a.prior_product_group,
-  a.current_tag,
-  a.prior_tag,
   a.currency_code,
   c.current_period_product_arr_usd_ccfx as prior_period_product_arr_usd_ccfx,
   c.prior_period_product_arr_usd_ccfx as current_period_product_arr_usd_ccfx,
@@ -971,30 +903,27 @@ select distinct a.evaluation_period,
   a.subsidiary_entity_name,
   a.churn_period,
   a.customer_bridge
-from ryzlan.sst_product_bridge_product_family_Tag_CM a
+from ryzlan.sst_product_bridge_product_family_CM a
   join temp_CPI_Reversal b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
   and coalesce(a.current_product_family, a.prior_product_family) = b.current_product_family
-  and coalesce(a.current_tag, a.prior_tag) = b.current_tag
-  join ryzlan.sst_product_bridge_product_family_Tag_CM c on c.mcid = b.mcid
+  join ryzlan.sst_product_bridge_product_family_CM c on c.mcid = b.mcid
   and c.evaluation_period = b.CPI_evaluation_period
   and coalesce(c.current_product_family, c.prior_product_family) = b.current_product_family
-  and coalesce(a.current_tag, a.prior_tag) = b.current_tag
   and c.product_bridge = 'CPI'
 where b.Split_record = 1
   and a.evaluation_period = var_period
   and a.product_bridge in ('Downgrade', 'Churn')
 order by mcid;
-delete from ryzlan.sst_product_bridge_product_family_Tag_CM a using temp_CPI_Reversal b
+delete from ryzlan.sst_product_bridge_product_family_CM a using temp_CPI_Reversal b
 where 1 = 1
   and a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
   and coalesce(a.current_product_family, a.prior_product_family) = b.current_product_family
-  and coalesce(a.current_tag, a.prior_tag) = b.current_tag
   and b.Split_record = 1
   and a.evaluation_period = var_period
   and a.product_bridge in ('Downgrade', 'Churn');
-insert into ryzlan.sst_product_bridge_product_family_Tag_CM (
+insert into ryzlan.sst_product_bridge_product_family_CM (
     evaluation_period,
     prior_period,
     current_period,
@@ -1007,8 +936,6 @@ insert into ryzlan.sst_product_bridge_product_family_Tag_CM (
     prior_product_family,
     current_product_group,
     prior_product_group,
-    current_tag,
-    prior_tag,
     currency_code,
     prior_period_product_arr_usd_ccfx,
     current_period_product_arr_usd_ccfx,
@@ -1036,8 +963,6 @@ select evaluation_period,
   prior_product_family,
   current_product_group,
   prior_product_group,
-  current_tag,
-  prior_tag,
   currency_code,
   prior_period_product_arr_usd_ccfx,
   current_period_product_arr_usd_ccfx,

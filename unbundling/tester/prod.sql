@@ -1,397 +1,1483 @@
-CREATE OR REPLACE FUNCTION sandbox_pd.sp_populate_adaptive_exports(snapshot_date_from date, snapshot_date_to date) RETURNS void LANGUAGE plpgsql AS $function$ BEGIN --####################################################
-  --Ending ARR
-  --####################################################
-  RAISE NOTICE 'Running temp_adaptive_ending_ARR...';
-drop table if exists temp_adaptive_ending_ARR;
-create temp table temp_adaptive_ending_ARR as with temp_subentity as (
-  select *,
-    row_number () over (
-      partition by mcid,
-      snapshot_date
-      order by total_arr desc
-    ) as rnk
-  from (
-      select snapshot_date,
-        mcid,
-        subsidiary_entity_name,
-        sum(baseline_arr_local_currency) as total_arr,
-        sum(arr) as arr_total,
-        max(c_name) as c_name --select *
-      from sandbox_pd.sst_adhoc
-      where snapshot_date between snapshot_date_from and snapshot_date_to
-        and coalesce(baseline_arr_local_currency, 0) > 0
-      group by snapshot_date,
-        mcid,
-        subsidiary_entity_name
-    ) a
-),
-temp_multi_currencies as (
-  select snapshot_date,
-    mcid,
-    updated_product_group
-  from sandbox_pd.sst_adhoc
-  where snapshot_date between snapshot_date_from and snapshot_date_to
-    and coalesce(baseline_arr_local_currency, 0) > 0
-  group by snapshot_date,
-    mcid,
-    updated_product_group
-  having count(distinct base_currency) > 1
+CREATE OR REPLACE FUNCTION sandbox_pd.sp_populate_run_sst_sensitivity_analysis_actions(run_cohort_1 integer, run_cohort_2 integer) RETURNS void LANGUAGE plpgsql AS $function$ BEGIN --#################################################
+  --COHORT 1 ACTIONS
+  --#################################################
+  if run_cohort_1 = 1 then drop table if exists sensitivity_analysis_actions_temp;
+create table sensitivity_analysis_actions_temp as
+select distinct "End Customer MCID",
+  "Snapshot Date (Month)",
+  "Remedial Action",
+  null as arr_old,
+  null::numeric as arr_previous_month,
+  null as arr_new,
+  null::Text as de_comments,
+  null::Text as da_comments,
+  null::Text as no_of_records_in_sst_postive_arr,
+  null::Date as snapshot_date_copied
+from sandbox_pd.SST_COHORT_1
+where 1 = 1
+  and "Cust. either U&D or Churn > Avg. ARR (1 if yes)" = 1
+  and "Remedial Action" is not null
+  and "Misassigned MCIDs" = ''
+  and "Remedial Action" in (
+    'Overwrite with latest Non-Spike Value - Non U&D',
+    'Overwrite with latest non-Spike value - U&D',
+    'Overwrite with the latest non-zero value - U&D'
+  )
+  and "Snapshot Date (Month)" < '2023-01-01'
+  and (
+    "DE Instructions for Option C" is null
+    and "Yanni's May 19 Comments" is null
+  )
+union
+select distinct "End Customer MCID",
+  "Snapshot Date (Month)",
+  "Remedial Action",
+  null as arr_old,
+  "ARR of Previous Month"::numeric as arr_previous_month,
+  null as arr_new,
+  null::Text as de_comments,
+  null::Text as da_comments,
+  null::Text as no_of_records_in_sst_postive_arr,
+  null::Date as snapshot_date_copied --select *
+from sandbox_pd.SST_COHORT_1
+where 1 = 1
+  and (
+    "Remedial Action" in ('Overwrite with the latest non-zero value - U&D')
+    and "DE Instructions for Option C" is null
+  )
+  and "Misassigned MCIDs" = ''
+  and "Snapshot Date (Month)" < '2023-01-01'
+  and "Churn" != 'Flat'
+  and 1 = 2;
+--#################################################################
+--case 1: update arr to 0
+--#################################################################
+update sandbox_pd.sst b
+set arr = 0,
+  baseline_arr_local_currency = 0,
+  cohort_actions = concat('Cohort 1: Updated arr to 0 from ', arr::text)
+from sensitivity_analysis_actions_temp a
+where 1 = 1
+  and a."End Customer MCID" = b.mcid
+  and a."Snapshot Date (Month)" = b.snapshot_date
+  and "Remedial Action" = 'Overwrite with zero value - U&D'
+  and b.overage_flag ilike '%N%';
+--#################################################################
+--case 2: get latest arr and delete + insert
+--#################################################################
+drop table if exists temp_to_delete_records;
+create temporary table temp_to_delete_records as
+select distinct a."End Customer MCID",
+  a."Snapshot Date (Month)",
+  b.overage_flag
+from sensitivity_analysis_actions_temp a
+  left join sandbox_pd.sst b on a."End Customer MCID" = b.mcid
+  and a."Snapshot Date (Month)" = b.snapshot_date
+where 1 = 1
+  and "Remedial Action" in (
+    'Overwrite with latest Non-Spike Value - Non U&D',
+    'Overwrite with latest non-Spike value - U&D',
+    'Overwrite with the latest non-zero value - U&D'
+  )
+order by 1,
+  2;
+--insert records from sst based on latest snapshot after sens analysis snapshots
+drop table if exists temp_to_insert_records_max_snapshot;
+create temporary table temp_to_insert_records_max_snapshot as with temp as (
+  select "End Customer MCID",
+    "Snapshot Date (Month)" as snapshot_date,
+    lead("Snapshot Date (Month)"::date) over (
+      partition by "End Customer MCID"
+      order by "Snapshot Date (Month)"::date
+    ) as snapshot_date_lead
+  from sensitivity_analysis_actions_temp a
+  where 1 = 1
+    and "Remedial Action" in (
+      'Overwrite with latest Non-Spike Value - Non U&D',
+      'Overwrite with latest non-Spike value - U&D',
+      'Overwrite with the latest non-zero value - U&D'
+    )
 ),
 temp1 as (
-  select snapshot_date --, null as c_full_name
-,
-    mcid as master_customer_id,
-    base_currency as baseline_currency,
-    overage_flag,
-    sum(baseline_arr_local_currency) as baseline_arr_local_currency,
-    sum(arr) as arr_total,
-    null as arr_usd_ccfx,
-    updated_product_group,
-    max(c_name) as c_name
-  from sandbox_pd.sst_adhoc
-  where snapshot_date between snapshot_date_from and snapshot_date_to
-    and coalesce(baseline_arr_local_currency, 0) > 0
-  group by snapshot_date,
-    mcid,
-    base_currency,
-    updated_product_group,
-    overage_flag
-)
-select a.snapshot_date,
-  a.c_name,
-  c.name as c_full_name,
-  null as end_customer,
-  a.master_customer_id,
-  a.baseline_currency,
-  a.baseline_arr_local_currency,
-  a.arr_usd_ccfx,
-CASE
-    WHEN overage_flag ILIKE '%Y%' THEN 'Campaign Overages'
-    ELSE a.updated_product_group
-  END AS product_family,
-  b.subsidiary_entity_name,
-case
-    when d.mcid is not null then 1
-    else 0
-  end as mcid_with_multiple_currencies,
-  a.arr_total,
-  a.overage_flag
-from temp1 a
-  left join temp_subentity b on a.master_customer_id = b.mcid
-  and a.snapshot_date = b.snapshot_date
-  and b.rnk = 1
-  left join (
-    select epi_universal_id,
-      name,
-      row_number() over(
-        partition by epi_universal_id
-        order by is_active desc
-      ) as rnk
-    from ufdm_blue.customer_detail
-  ) c on a.master_customer_id = c.epi_universal_id
-  and c.rnk = 1
-  left join temp_multi_currencies d on a.master_customer_id = d.mcid
-  and a.snapshot_date = d.snapshot_date
-  and a.updated_product_group = d.updated_product_group --order by a.baseline_arr_local_currency
-;
-RAISE NOTICE 'Running SST_adaptive_ending_ARR ...';
---1.Ending ARR results
-drop table if exists sandbox_pd.SST_adaptive_ending_ARR;
-create table sandbox_pd.SST_adaptive_ending_ARR as
-select snapshot_date,
-  master_customer_id as c_name,
-  c_full_name,
-  end_customer,
-case
-    when coalesce(master_customer_id, '') = '' then 'Mockups'
-    when lower(coalesce(master_customer_id, '')) = 'blank' then 'Mockups'
-    else master_customer_id
-  end as master_customer_id,
-  baseline_currency,
-  baseline_arr_local_currency,
-  arr_usd_ccfx --          ,case when product_family is null or product_family = '' or product_family = 'New' or product_family ilike '%applicable%'
-  --                    then ''
-  --                else product_family
-  --           end
-,
-  coalesce(product_family, '') as product_family,
-  subsidiary_entity_name,
-  c_name as c_name_real,
-  arr_total as arr_usd_ccfx_sst,
-  overage_flag
-from temp_adaptive_ending_ARR
-where coalesce(baseline_arr_local_currency, 0) > 0;
---####################################################
---Customer metadata
---####################################################
---3.Customer Metadata results
-RAISE NOTICE 'Running SST_adaptive_customer_metadata...';
-drop table if exists sandbox_pd.SST_adaptive_customer_metadata;
-create table sandbox_pd.SST_adaptive_customer_metadata as with temp1 as (
-  select master_customer_id,
-    subsidiary_entity_name,
-    row_number() over (
-      partition by master_customer_id
-      order by snapshot_date desc
-    ) as rnk
-  from sandbox_pd.SST_adaptive_ending_ARR
-  where subsidiary_entity_name is not null
+  select *,
+    (
+      DATE_PART(
+        'year',
+        coalesce(snapshot_date_lead, snapshot_date)::date
+      ) - DATE_PART('year', snapshot_date::date)
+    ) * 12 + (
+      DATE_PART(
+        'month',
+        coalesce(snapshot_date_lead, snapshot_date)::date
+      ) - DATE_PART('month', snapshot_date::date)
+    ) as month_diff,
+    (
+      (
+        date_trunc('month', snapshot_date) + interval '2 month'
+      ) - interval '1 day'
+    )::Date as snapshot_date_to_copy
+  from temp a
 ),
 temp2 as (
-  select master_customer_id,
-    c_name_real as c_name,
-    row_number() over (
-      partition by master_customer_id
-      order by snapshot_date desc
-    ) as rnk
-  from sandbox_pd.SST_adaptive_ending_ARR
-  where c_name_real is not null
-),
-temp3 as (
-  select distinct master_customer_id
-  from sandbox_pd.SST_adaptive_ending_ARR
+  select "End Customer MCID",
+    snapshot_date,
+    snapshot_date_lead,
+    snapshot_date_to_copy
+  from temp1
+  where month_diff <> 1
 )
-select c.c_name,
-case
-    when coalesce(a.master_customer_id, '') = '' then 'Mockups'
-    when lower(coalesce(a.master_customer_id, '')) = 'blank' then 'Mockups'
-    else a.master_customer_id
-  end as master_customer_id,
-case
-    when cd.name is null then 'Mock Ups'
-    else cd.name
-  end as c_full_name,
-  null as end_customer,
-case
-    when coalesce(cd.segment, '') = '' then 'Mid-Market'
-    else cd.segment
-  end as segment,
-case
-    when coalesce(cd.territory, '') = '' then 'NA-Mid-Market East'
-    else cd.territory
-  end as territory,
-case
-    when coalesce(cd.region, '') = '' then 'North America'
-    else cd.region
-  end as region,
-  b.subsidiary_entity_name
-from temp3 a
-  left join temp1 b on a.master_customer_id = b.master_customer_id
-  and b.rnk = 1
-  left join temp2 c on a.master_customer_id = c.master_customer_id
-  and c.rnk = 1
-  left join (
-    select epi_universal_id,
-      name,
-      segment,
-      territory,
-      region,
-      row_number() over(
-        partition by epi_universal_id
-        order by is_active desc
-      ) as rnk
-    from ufdm_blue.customer_detail
-  ) cd on a.master_customer_id = cd.epi_universal_id
-  and c.rnk = 1;
---####################################################
---movements data
---####################################################
-/*
- RAISE NOTICE 'Running SST_adaptive_product_bridge_movements...';
- 
- drop table if exists sandbox_pd.SST_adaptive_product_bridge_movements;
- 
- create table sandbox_pd.SST_adaptive_product_bridge_movements as
- select b.current_period as snapshot_date
- ,mcid as c_full_name
- ,null as end_customer
- --,mcid as master_customer_id
- ,case when coalesce(mcid,'') = '' then 'Mockups' when lower(coalesce(mcid,'')) = 'blank' then 'Mockups' else mcid end as master_customer_id
- ,a.currency_code as baseline_currency
- ,product_arr_change_lcu as baseline_arr_local_currency
- ,null as arr_usd_ccfx
- ,case when coalesce(prior_product_family,current_product_family,'') = ''
- -- then 'Recurring: Cloud: Other Bookings: Other Bookings'
- then ''
- else coalesce(prior_product_family,current_product_family,'') end as sku
- ,subsidiary_entity_name
- ,replace(product_bridge,'N/A','Flat') as "Bridge_Account"
- ,'Account Name Product Bridge' as "Type"
- ,product_arr_change_ccfx
- from sandbox_pd.sst_product_bridge a
- join ufdm_grey.periods b on a.evaluation_period = b.evaluation_period
- where 1=1
- --and a.product_bridge not in ('Flat','N/A')
- and product_arr_change_lcu <> 0
- --and mcid is not null and mcid <> ''
- and b.current_period between snapshot_date_from and snapshot_date_to
- and b.evaluation_period not ilike '%W%'
- order by  b.current_period
- ;
- */
-RAISE NOTICE 'Running SST_adaptive_product_bridge_pg movements...';
-drop table if exists sandbox_pd.SST_adaptive_product_bridge_pg_movements;
-create table sandbox_pd.SST_adaptive_product_bridge_pg_movements as
-select b.current_period as snapshot_date,
-  mcid as c_full_name,
-  null as end_customer --,mcid as master_customer_id
-,
-case
-    when coalesce(mcid, '') = '' then 'Mockups'
-    when lower(coalesce(mcid, '')) = 'blank' then 'Mockups'
-    else mcid
-  end as master_customer_id,
-  a.currency_code as baseline_currency,
-  product_arr_change_lcu as baseline_arr_local_currency,
-  null as arr_usd_ccfx,
-case
-    when coalesce(prior_product_group, current_product_group, '') = '' then ''
-    else coalesce(prior_product_group, current_product_group, '')
-  end as sku,
-  subsidiary_entity_name,
-  replace(product_bridge, 'N/A', 'Flat') as "Bridge_Account",
-  'Account Name Product Group Bridge' as "Type",
-  product_arr_change_ccfx
-from sandbox_pd.sst_product_bridge_product_group a
-  join ufdm_grey.periods b on a.evaluation_period = b.evaluation_period
-where 1 = 1 --and a.product_bridge not in ('Flat','N/A')
-  and product_arr_change_lcu <> 0 --and mcid is not null and mcid <> ''
-  and b.current_period between snapshot_date_from and snapshot_date_to
-  and b.evaluation_period not ilike '%W%'
-order by b.current_period;
-RAISE NOTICE 'Running SST_adaptive_product_bridge_ps_movements...';
-drop table if exists sandbox_pd.SST_adaptive_product_bridge_ps_movements;
-create table sandbox_pd.SST_adaptive_product_bridge_ps_movements as
-select b.current_period as snapshot_date,
-  mcid as c_full_name,
-  null as end_customer --,mcid as master_customer_id
-,
-case
-    when coalesce(mcid, '') = '' then 'Mockups'
-    when lower(coalesce(mcid, '')) = 'blank' then 'Mockups'
-    else mcid
-  end as master_customer_id,
-  a.currency_code as baseline_currency,
-  product_arr_change_lcu as baseline_arr_local_currency,
-  null as arr_usd_ccfx,
-case
-    when coalesce(
-      prior_product_solution,
-      current_product_solution,
-      ''
-    ) = '' then ''
-    else coalesce(
-      prior_product_solution,
-      current_product_solution,
-      ''
+select b."End Customer MCID",
+  b."Snapshot Date (Month)",
+  min(a.snapshot_date_to_copy) as snapshot_date_to_copy
+from temp2 a
+  join temp_to_delete_records b on a."End Customer MCID" = b."End Customer MCID"
+  and b."Snapshot Date (Month)" <= a.snapshot_date
+group by 1,
+  2;
+--delete records from sst table
+delete from sandbox_pd.sst a using temp_to_insert_records_max_snapshot b
+where a.mcid = b."End Customer MCID"
+  and b."Snapshot Date (Month)" = a.snapshot_date
+  and a.overage_flag ilike '%N%'
+  and exists (
+    select 1
+    from sandbox_pd.sst c
+    where a.mcid = c.mcid
+      and c.snapshot_date = b.snapshot_date_to_copy
+  );
+with temp as (
+  select distinct b."End Customer MCID",
+    b."Snapshot Date (Month)"
+  from sandbox_pd.sst a
+    join temp_to_insert_records_max_snapshot b on a.mcid = b."End Customer MCID"
+    and b."Snapshot Date (Month)" = a.snapshot_date
+    and a.overage_flag ilike '%N%'
+  where not exists (
+      select 1
+      from sandbox_pd.sst c
+      where a.mcid = c.mcid
+        and c.snapshot_date = b.snapshot_date_to_copy
     )
-  end as sku,
-  subsidiary_entity_name,
-  replace(product_bridge, 'N/A', 'Flat') as "Bridge_Account",
-  'Account Name Solution Bridge' as "Type",
-  product_arr_change_ccfx
-from sandbox_pd.sst_product_bridge_product_solution a
-  join ufdm_grey.periods b on a.evaluation_period = b.evaluation_period
-where 1 = 1 --and a.product_bridge not in ('Flat','N/A')
-  and product_arr_change_lcu <> 0 --and mcid is not null and mcid <> ''
-  and b.current_period between snapshot_date_from and snapshot_date_to
-  and b.evaluation_period not ilike '%W%'
-order by b.current_period;
-/*
- RAISE NOTICE 'Running SST_adaptive_product_bridge_pf_ps movements...';
- 
- drop table if exists sandbox_pd.SST_adaptive_product_bridge_pf_ps_movements;
- 
- create table sandbox_pd.SST_adaptive_product_bridge_pf_ps_movements as
- select b.current_period as snapshot_date
- ,mcid as c_full_name
- ,null as end_customer
- --,mcid as master_customer_id
- ,case when coalesce(mcid,'') = '' then 'Mockups' when lower(coalesce(mcid,'')) = 'blank' then 'Mockups' else mcid end as master_customer_id
- ,a.currency_code as baseline_currency
- ,product_arr_change_lcu as baseline_arr_local_currency
- ,null as arr_usd_ccfx
- ,case when coalesce(prior_product_family_solution,current_product_family_solution,'') = ''
- then ''
- else coalesce(prior_product_family_solution,current_product_family_solution,'') end as sku
- ,subsidiary_entity_name
- ,replace(product_bridge,'N/A','Flat') as "Bridge_Account"
- ,'Account Name Product Family to Product Solution Bridge - new' as "Type"
- ,product_arr_change_ccfx
- from sandbox_pd.sst_product_bridge_product_family_solution a
- join ufdm_grey.periods b on a.evaluation_period = b.evaluation_period
- where 1=1
- --and a.product_bridge not in ('Flat','N/A')
- and product_arr_change_lcu <> 0
- --and mcid is not null and mcid <> ''
- and b.current_period between snapshot_date_from and snapshot_date_to
- and b.evaluation_period not ilike '%W%'
- order by  b.current_period
- ;
- */
-RAISE NOTICE 'Running SST_adaptive_customer_bridge_movements...';
-drop table if exists sandbox_pd.SST_adaptive_customer_bridge_movements;
-create table sandbox_pd.SST_adaptive_customer_bridge_movements as
-select b.current_period as snapshot_date,
-  mcid as c_full_name,
-  null as end_customer --,mcid as master_customer_id
-,
-case
-    when coalesce(mcid, '') = '' then 'Mockups'
-    when lower(coalesce(mcid, '')) = 'blank' then 'Mockups'
-    else mcid
-  end as master_customer_id,
-  a.baseline_currency as baseline_currency,
-  a.customer_arr_change_lcu as baseline_arr_local_currency,
-  null as arr_usd_ccfx,
-  '' as sku,
-  subsidiary_entity_name,
-  customer_bridge as "Bridge_Account",
-  'Account Name Customer Bridge' as "Type",
-  a.customer_arr_change_ccfx --,a.evaluation_period
-  --select *
-from sandbox_pd.sst_customer_bridge a
-  join ufdm_grey.periods b on a.evaluation_period = b.evaluation_period
-where 1 = 1 --and a.customer_bridge not in ('Flat','N/A')
-  and customer_arr_change_lcu <> 0
-  and b.current_period between snapshot_date_from and snapshot_date_to
-  and b.evaluation_period not ilike '%W%' --and mcid is not null and mcid <> ''
-order by 1;
---update sku based on product bridge
-drop table if exists temp_CB_sku;
-create temp table temp_CB_sku as with temp_cb as (
-  select distinct snapshot_date,
-    master_customer_id
-  from sandbox_pd.SST_adaptive_customer_bridge_movements
-),
-temp_pb as (
-  select b.master_customer_id,
-    b.snapshot_date,
-    a.sku,
-    sum(coalesce(a.product_arr_change_ccfx, 0)) as product_arr_change_ccfx
-  from sandbox_pd.SST_adaptive_product_bridge_pg_movements a
-    join temp_cb b on a.master_customer_id = b.master_customer_id
-    and a.snapshot_date = b.snapshot_date
-  group by b.master_customer_id,
-    b.snapshot_date,
-    sku
-),
-temp_pb_max as (
-  select *,
-    rank() over (
-      partition by master_customer_id,
-      snapshot_date
-      order by product_arr_change_ccfx desc
-    ) as rnk
-  from temp_pb
 )
+update sandbox_pd.sst a
+set arr = 0::numeric,
+  baseline_arr_local_currency = 0,
+  cohort_actions = 'updated arr to 0'
+from temp b
+where a.mcid = b."End Customer MCID"
+  and b."Snapshot Date (Month)" = a.snapshot_date
+  and a.overage_flag ilike '%N%';
+--copy records from sst
+drop table if exists temp_to_insert_records;
+create temporary table temp_to_insert_records as
+select b."Snapshot Date (Month)" as snapshot_date,
+  a.ultimate_parent_id,
+  a.ultimate_parent_name,
+  a.duns_name,
+  a.duns_number,
+  a.parent_duns_name,
+  a.parent_duns_number,
+  a.domesticultimatedunsnumber,
+  a.globalultimatedunsnumber,
+  a.new_product_solution,
+  a.new_product_line,
+  a.updated_product_group,
+  a.new_product,
+  a.new_line_of_business,
+  a.new_line_of_business_sub_category,
+  a.c_name,
+  a.parent_ns_id,
+  a.end_ns_id,
+  a.name,
+  a.parent_name,
+  a.end_name,
+  a.mcid,
+  a.parent_mcid,
+  a.end_mcid,
+  a.subsidiary_entity_name,
+  a.overage_flag,
+  a.segment,
+  a.region,
+  a.product_family,
+  a.base_currency,
+  a.cc_fx_rate::double precision as cc_fx_rate,
+  a.fx_date,
+  a.arr,
+  a.baseline_arr_local_currency,
+  a.dw_modified_date,
+  a.dw_created_date,
+  a.parent_sf_id,
+  a.parent_sf_name,
+  a.sku
+from sandbox_pd.sst a
+  join temp_to_insert_records_max_snapshot b on a.mcid = b."End Customer MCID"
+  and a.snapshot_date = b.snapshot_date_to_copy
+  and a.overage_flag ilike '%N%';
+--update snapshot_date_copied and new arr value in sensitivity_analysis_actions
+with temp as (
+  select a."End Customer MCID",
+    a."Snapshot Date (Month)",
+    a.snapshot_date_to_copy,
+    sum(b.arr) as arr_new,
+    sum(
+      case
+        when b.mcid is null then 1
+        else 0
+      end
+    ) as new_snapshot_not_exists
+  from temp_to_insert_records_max_snapshot a
+    left join temp_to_insert_records b on a."End Customer MCID" = b.mcid
+    and a."Snapshot Date (Month)" = b.snapshot_date
+  group by 1,
+    2,
+    3
+)
+update sensitivity_analysis_actions_temp a
+set snapshot_date_copied = b.snapshot_date_to_copy,
+  arr_new = b.arr_new,
+  da_comments = case
+    when new_snapshot_not_exists > 0 then 'New snapshot_date not exists'
+    else null
+  end
+from temp b
+where a."End Customer MCID" = b."End Customer MCID"
+  and a."Snapshot Date (Month)" = b."Snapshot Date (Month)"
+  and a."Remedial Action" in (
+    'Overwrite with latest Non-Spike Value - Non U&D',
+    'Overwrite with latest non-Spike value - U&D',
+    'Overwrite with the latest non-zero value - U&D'
+  );
+insert into sandbox_pd.sst (
+    snapshot_date,
+    ultimate_parent_id,
+    ultimate_parent_name,
+    duns_name,
+    duns_number,
+    parent_duns_name,
+    parent_duns_number,
+    domesticultimatedunsnumber,
+    globalultimatedunsnumber,
+    new_product_solution,
+    new_product_line,
+    updated_product_group,
+    new_product,
+    new_line_of_business,
+    new_line_of_business_sub_category,
+    c_name,
+    parent_ns_id,
+    end_ns_id,
+    name,
+    parent_name,
+    end_name,
+    mcid,
+    parent_mcid,
+    end_mcid,
+    subsidiary_entity_name,
+    overage_flag,
+    segment,
+    region,
+    product_family,
+    base_currency,
+    cc_fx_rate,
+    fx_date,
+    arr,
+    baseline_arr_local_currency,
+    dw_modified_date,
+    dw_created_date,
+    parent_sf_id,
+    parent_sf_name,
+    record_source,
+    cohort_actions,
+    sku
+  )
+select snapshot_date,
+  ultimate_parent_id,
+  ultimate_parent_name,
+  duns_name,
+  duns_number,
+  parent_duns_name,
+  parent_duns_number,
+  domesticultimatedunsnumber,
+  globalultimatedunsnumber,
+  new_product_solution,
+  new_product_line,
+  updated_product_group,
+  new_product,
+  new_line_of_business,
+  new_line_of_business_sub_category,
+  c_name,
+  parent_ns_id,
+  end_ns_id,
+  name,
+  parent_name,
+  end_name,
+  mcid,
+  parent_mcid,
+  end_mcid,
+  subsidiary_entity_name,
+  overage_flag,
+  segment,
+  region,
+  product_family,
+  base_currency,
+  cc_fx_rate::double precision,
+  fx_date,
+  arr,
+  baseline_arr_local_currency,
+  dw_modified_date,
+  dw_created_date,
+  parent_sf_id,
+  parent_sf_name,
+  record_source,
+  concat(
+    'Deleted data and inserted data snapshot from latest snapshot',
+    ''::Text
+  ) as cohort_actions,
+  sku
+from temp_to_insert_records;
+update sandbox_pd.sst b
+set arr = 0,
+  cohort_actions = 'updated arr to 0'
+from sensitivity_analysis_actions_temp a
+where a."End Customer MCID" = b.mcid
+  and a."Snapshot Date (Month)" = b.snapshot_date
+  and da_comments = 'New snapshot_date not exists'
+  and b.overage_flag ilike '%N%';
+--#################################################################
+--case 4: manual overrides
+--#################################################################
+drop table if exists temp_option_c_customers;
+create temporary table temp_option_c_customers as
+select distinct "End Customer MCID",
+  "Remedial Action",
+  "DE Instructions for Option C",
+  "Yanni's May 19 Comments"
+from sandbox_pd.SST_COHORT_1
+where 1 = 1
+  and "Cust. either U&D or Churn > Avg. ARR (1 if yes)" = 1
+  and "Remedial Action" is not null
+  and "Misassigned MCIDs" = '' --and "Sum of Reviews by Customer (Occurrences)" in (0,1)
+  --and "Occurence of Churn at Date > Avg. ARR lst 12 Mths" in (0,1)
+  and "Remedial Action" in (
+    'Overwrite with latest Non-Spike Value - Non U&D',
+    'Overwrite with latest non-Spike value - U&D'
+  ) --,'Overwrite with the latest non-zero value - U&D')
+  and "Snapshot Date (Month)" < '2023-01-01'
+  and (
+    "DE Instructions for Option C" is not null
+    and "Yanni's May 19 Comments" is not null
+  );
+drop table if exists temp_option_c;
+create temporary table temp_option_c as
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-09-30'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-10-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied --need to check with farah as data changed
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-11-30'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-12-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-01-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-02-28'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-03-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-04-30'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-05-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-06-30'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-07-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-08-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-09-30'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-10-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '16c23d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-11-30'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '291f7878-2db2-9c73-36c7-f18e91aa01ee' as mcid,
+  '2022-05-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '291f7878-2db2-9c73-36c7-f18e91aa01ee' as mcid,
+  '2022-06-30'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '291f7878-2db2-9c73-36c7-f18e91aa01ee' as mcid,
+  '2022-07-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '291f7878-2db2-9c73-36c7-f18e91aa01ee' as mcid,
+  '2022-08-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '291f7878-2db2-9c73-36c7-f18e91aa01ee' as mcid,
+  '2022-09-30'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '291f7878-2db2-9c73-36c7-f18e91aa01ee' as mcid,
+  '2022-10-31'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '291f7878-2db2-9c73-36c7-f18e91aa01ee' as mcid,
+  '2022-11-30'::date as snapshot_date,
+  '2022-12-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-01-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-02-28'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-03-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-04-30'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-05-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-06-30'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-07-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-08-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-09-30'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-10-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-11-30'::date as snapshot_date,
+  '2021-05-30'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-12-31'::date as snapshot_date,
+  '2021-05-30'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-01-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-02-29'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-03-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-04-30'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-05-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-06-30'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-07-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-08-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-09-30'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-10-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-11-30'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-12-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-01-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-02-28'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-03-31'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied
+union all
+select '2fd73d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-04-30'::date as snapshot_date,
+  '2021-05-31'::date as snapshot_date_copied --need to check with farah as date changed
+  --union all select '3eea6afb-5a3d-a754-f496-43224112b3b7' as mcid,'2021-03-31'::date as snapshot_date, '2022-03-31'::date as snapshot_date_copied  --need to check with farah as data looks good now no action required
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-02-28'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-03-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-04-30'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-05-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-06-30'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-07-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-08-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-09-30'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-10-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-11-30'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2021-12-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '54dd139f-c4b6-c22d-e4a8-04dfeb2341a3' as mcid,
+  '2022-01-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select '6cf747dc-ce3a-ed70-86c0-5ad6c076ec63' as mcid,
+  '2022-09-30'::date as snapshot_date,
+  '2022-10-31'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2021-11-30'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2021-12-31'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-01-31'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-02-28'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-03-31'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-04-30'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-05-31'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-06-30'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-07-31'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-08-31'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-09-30'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '891c0d99-35e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-10-31'::date as snapshot_date,
+  '2022-11-30'::date as snapshot_date_copied
+union all
+select '897145ea-48ca-89c6-9284-cb3e8bd3c17e' as mcid,
+  '2022-01-31'::date as snapshot_date,
+  '2022-04-30'::date as snapshot_date_copied
+union all
+select '897145ea-48ca-89c6-9284-cb3e8bd3c17e' as mcid,
+  '2022-02-28'::date as snapshot_date,
+  '2022-04-30'::date as snapshot_date_copied
+union all
+select '897145ea-48ca-89c6-9284-cb3e8bd3c17e' as mcid,
+  '2022-03-31'::date as snapshot_date,
+  '2022-04-30'::date as snapshot_date_copied
+union all
+select '8caf451d-1651-e811-8143-70106fa67261' as mcid,
+  '2022-08-31'::date as snapshot_date,
+  '2021-01-31'::date as snapshot_date_copied
+union all
+select '8caf451d-1651-e811-8143-70106fa67261' as mcid,
+  '2022-09-30'::date as snapshot_date,
+  '2021-01-31'::date as snapshot_date_copied
+union all
+select '8caf451d-1651-e811-8143-70106fa67261' as mcid,
+  '2022-10-31'::date as snapshot_date,
+  '2021-01-31'::date as snapshot_date_copied
+union all
+select '8caf451d-1651-e811-8143-70106fa67261' as mcid,
+  '2022-11-30'::date as snapshot_date,
+  '2021-01-31'::date as snapshot_date_copied
+union all
+select '8caf451d-1651-e811-8143-70106fa67261' as mcid,
+  '2022-12-31'::date as snapshot_date,
+  '2021-01-31'::date as snapshot_date_copied
+union all
+select 'a574e1c4-34e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-01-31'::date as snapshot_date,
+  '2022-09-30'::date as snapshot_date_copied
+union all
+select 'a574e1c4-34e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-02-28'::date as snapshot_date,
+  '2022-09-30'::date as snapshot_date_copied
+union all
+select 'a574e1c4-34e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-03-31'::date as snapshot_date,
+  '2022-09-30'::date as snapshot_date_copied
+union all
+select 'a574e1c4-34e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-04-30'::date as snapshot_date,
+  '2022-09-30'::date as snapshot_date_copied
+union all
+select 'a574e1c4-34e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-05-31'::date as snapshot_date,
+  '2022-09-30'::date as snapshot_date_copied
+union all
+select 'a574e1c4-34e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-06-30'::date as snapshot_date,
+  '2022-09-30'::date as snapshot_date_copied
+union all
+select 'a574e1c4-34e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-07-31'::date as snapshot_date,
+  '2022-09-30'::date as snapshot_date_copied
+union all
+select 'a574e1c4-34e4-e411-9afb-0050568d2da8' as mcid,
+  '2022-08-31'::date as snapshot_date,
+  '2022-09-30'::date as snapshot_date_copied
+union all
+select 'ac4ab096-10ce-cf17-6ba7-94a36ab9333f' as mcid,
+  '2020-01-31'::date as snapshot_date,
+  '2020-02-29'::date as snapshot_date_copied
+union all
+select 'ac4ab096-10ce-cf17-6ba7-94a36ab9333f' as mcid,
+  '2021-05-31'::date as snapshot_date,
+  '2021-07-31'::date as snapshot_date_copied
+union all
+select 'ac4ab096-10ce-cf17-6ba7-94a36ab9333f' as mcid,
+  '2021-06-30'::date as snapshot_date,
+  '2021-07-31'::date as snapshot_date_copied
+union all
+select 'b6479b1a-2251-e811-813c-70106fa51d21' as mcid,
+  '2019-03-31'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'b6479b1a-2251-e811-813c-70106fa51d21' as mcid,
+  '2019-04-30'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'b6479b1a-2251-e811-813c-70106fa51d21' as mcid,
+  '2019-05-31'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'b6479b1a-2251-e811-813c-70106fa51d21' as mcid,
+  '2019-06-30'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'b6479b1a-2251-e811-813c-70106fa51d21' as mcid,
+  '2019-07-31'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'b6479b1a-2251-e811-813c-70106fa51d21' as mcid,
+  '2019-08-31'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'b6479b1a-2251-e811-813c-70106fa51d21' as mcid,
+  '2019-09-30'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'b6479b1a-2251-e811-813c-70106fa51d21' as mcid,
+  '2019-10-31'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'bca7451d-1651-e811-8143-70106fa67261' as mcid,
+  '2021-01-31'::date as snapshot_date,
+  '2021-04-30'::date as snapshot_date_copied
+union all
+select 'bca7451d-1651-e811-8143-70106fa67261' as mcid,
+  '2021-02-28'::date as snapshot_date,
+  '2021-04-30'::date as snapshot_date_copied
+union all
+select 'bca7451d-1651-e811-8143-70106fa67261' as mcid,
+  '2021-03-31'::date as snapshot_date,
+  '2021-04-30'::date as snapshot_date_copied
+union all
+select 'c4350de0-20b2-e911-a96d-000d3a441525' as mcid,
+  '2019-01-31'::date as snapshot_date,
+  '2019-03-31'::date as snapshot_date_copied
+union all
+select 'c4350de0-20b2-e911-a96d-000d3a441525' as mcid,
+  '2019-02-28'::date as snapshot_date,
+  '2019-03-31'::date as snapshot_date_copied
+union all
+select 'c6c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-03-31'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'c6c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-04-30'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'c6c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-05-31'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'c6c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-06-30'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'c6c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-07-31'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied
+union all
+select 'c6c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-08-31'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied --need to check with farah
+union all
+select 'c6c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-09-30'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied --need to check with farah
+union all
+select 'c6c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-10-31'::date as snapshot_date,
+  '2019-11-30'::date as snapshot_date_copied --need to check with farah
+union all
+select 'cffbc28b-c2c7-46b0-c942-a0cd7082c73b' as mcid,
+  '2022-09-30'::date as snapshot_date,
+  '2022-10-31'::date as snapshot_date_copied
+union all
+select 'd2bef417-2502-cd69-5fcc-0fe86ca4fb20' as mcid,
+  '2022-09-30'::date as snapshot_date,
+  '2022-10-31'::date as snapshot_date_copied
+union all
+select 'e9654665-aa12-9468-c6ad-584064d9512b' as mcid,
+  '2022-01-31'::date as snapshot_date,
+  '2022-06-30'::date as snapshot_date_copied
+union all
+select 'e9654665-aa12-9468-c6ad-584064d9512b' as mcid,
+  '2022-02-28'::date as snapshot_date,
+  '2022-06-30'::date as snapshot_date_copied
+union all
+select 'e9654665-aa12-9468-c6ad-584064d9512b' as mcid,
+  '2022-03-31'::date as snapshot_date,
+  '2022-06-30'::date as snapshot_date_copied
+union all
+select 'e9654665-aa12-9468-c6ad-584064d9512b' as mcid,
+  '2022-04-30'::date as snapshot_date,
+  '2022-06-30'::date as snapshot_date_copied
+union all
+select 'e9654665-aa12-9468-c6ad-584064d9512b' as mcid,
+  '2022-05-31'::date as snapshot_date,
+  '2022-06-30'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-07-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-08-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-09-30'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-10-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-11-30'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2019-12-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-01-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-02-29'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-03-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-04-30'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-05-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-06-30'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-07-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-08-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-09-30'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-10-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-11-30'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2020-12-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-01-31'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '68c93d23-1651-e811-8143-70106fa67261' as mcid,
+  '2021-02-28'::date as snapshot_date,
+  '2021-03-31'::date as snapshot_date_copied
+union all
+select '957fd526-b665-e811-812f-70106faab5f1' as mcid,
+  '2021-08-31'::date as snapshot_date,
+  '2022-01-31'::date as snapshot_date_copied
+union all
+select '957fd526-b665-e811-812f-70106faab5f1' as mcid,
+  '2021-09-30'::date as snapshot_date,
+  '2022-01-31'::date as snapshot_date_copied
+union all
+select '957fd526-b665-e811-812f-70106faab5f1' as mcid,
+  '2021-10-31'::date as snapshot_date,
+  '2022-01-31'::date as snapshot_date_copied
+union all
+select '957fd526-b665-e811-812f-70106faab5f1' as mcid,
+  '2021-11-30'::date as snapshot_date,
+  '2022-01-31'::date as snapshot_date_copied
+union all
+select '957fd526-b665-e811-812f-70106faab5f1' as mcid,
+  '2021-12-31'::date as snapshot_date,
+  '2022-01-31'::date as snapshot_date_copied
+union all
+select 'd869d448-597a-e611-80e5-fc15b426ff90' as mcid,
+  '2020-11-30'::date as snapshot_date,
+  '2020-12-31'::date as snapshot_date_copied
+union all
+select 'e1bf5345-9de0-e2d9-5bd7-083c58d9971d' as mcid,
+  '2021-05-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select 'e1bf5345-9de0-e2d9-5bd7-083c58d9971d' as mcid,
+  '2021-06-30'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select 'e1bf5345-9de0-e2d9-5bd7-083c58d9971d' as mcid,
+  '2021-07-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select 'e1bf5345-9de0-e2d9-5bd7-083c58d9971d' as mcid,
+  '2021-08-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select 'e1bf5345-9de0-e2d9-5bd7-083c58d9971d' as mcid,
+  '2021-09-30'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select 'e1bf5345-9de0-e2d9-5bd7-083c58d9971d' as mcid,
+  '2021-10-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select 'e1bf5345-9de0-e2d9-5bd7-083c58d9971d' as mcid,
+  '2021-11-30'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select 'e1bf5345-9de0-e2d9-5bd7-083c58d9971d' as mcid,
+  '2021-12-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied
+union all
+select 'e1bf5345-9de0-e2d9-5bd7-083c58d9971d' as mcid,
+  '2022-01-31'::date as snapshot_date,
+  '2022-02-28'::date as snapshot_date_copied;
+alter table temp_option_c
+add column arr_old numeric;
+alter table temp_option_c
+add column arr_new numeric;
+--select * from temp_option_c
+--update old arr
+with temp as (
+  select b.mcid,
+    b.snapshot_date,
+    sum(a.arr) as arr_old
+  from sandbox_pd.sst a
+    join temp_option_c b on a.mcid = b.mcid
+    and b.snapshot_date = a.snapshot_date
+    and a.overage_flag ilike '%N%'
+  group by b.mcid,
+    b.snapshot_date
+)
+update temp_option_c a
+set arr_old = b.arr_old
+from temp b
+where a.mcid = b.mcid
+  and b.snapshot_date = a.snapshot_date;
+--update new arr
+with temp as (
+  select b.mcid,
+    b.snapshot_date_copied,
+    sum(a.arr) as arr_new
+  from sandbox_pd.sst a
+    join (
+      select distinct mcid,
+        snapshot_date_copied
+      from temp_option_c
+    ) b on a.mcid = b.mcid
+    and b.snapshot_date_copied = a.snapshot_date
+    and a.overage_flag ilike '%N%'
+  group by b.mcid,
+    b.snapshot_date_copied
+)
+update temp_option_c a
+set arr_new = b.arr_new
+from temp b
+where a.mcid = b.mcid
+  and b.snapshot_date_copied = a.snapshot_date_copied;
+--delete records from sst table
+delete from sandbox_pd.sst a using temp_option_c b
+where a.mcid = b.mcid
+  and b.snapshot_date = a.snapshot_date
+  and a.overage_flag ilike '%N%';
+update sandbox_pd.sst a
+set arr = 0,
+  baseline_arr_local_currency = 0
+where a.mcid in ('4456543717', '7650145182')
+  and a.overage_flag ilike '%N%';
+--copy records from sst
+drop table if exists temp_to_insert_records_option_c;
+create temporary table temp_to_insert_records_option_c as
+select b.snapshot_date as snapshot_date,
+  a.ultimate_parent_id,
+  a.ultimate_parent_name,
+  a.duns_name,
+  a.duns_number,
+  a.parent_duns_name,
+  a.parent_duns_number,
+  a.domesticultimatedunsnumber,
+  a.globalultimatedunsnumber,
+  a.new_product_solution,
+  a.new_product_line,
+  a.updated_product_group,
+  a.new_product,
+  a.new_line_of_business,
+  a.new_line_of_business_sub_category,
+  a.c_name,
+  a.parent_ns_id,
+  a.end_ns_id,
+  a.name,
+  a.parent_name,
+  a.end_name,
+  a.mcid,
+  a.parent_mcid,
+  a.end_mcid,
+  a.subsidiary_entity_name,
+  a.overage_flag,
+  a.segment,
+  a.region,
+  a.product_family,
+  a.base_currency,
+  a.cc_fx_rate,
+  a.fx_date,
+  a.arr,
+  a.baseline_arr_local_currency,
+  a.dw_modified_date,
+  a.dw_created_date,
+  a.parent_sf_id,
+  a.parent_sf_name,
+  a.sku
+from sandbox_pd.sst a
+  join temp_option_c b on a.mcid = b.mcid
+  and a.snapshot_date = b.snapshot_date_copied
+  and a.overage_flag ilike '%N%';
+insert into sandbox_pd.sst (
+    snapshot_date,
+    ultimate_parent_id,
+    ultimate_parent_name,
+    duns_name,
+    duns_number,
+    parent_duns_name,
+    parent_duns_number,
+    domesticultimatedunsnumber,
+    globalultimatedunsnumber,
+    new_product_solution,
+    new_product_line,
+    updated_product_group,
+    new_product,
+    new_line_of_business,
+    new_line_of_business_sub_category,
+    c_name,
+    parent_ns_id,
+    end_ns_id,
+    name,
+    parent_name,
+    end_name,
+    mcid,
+    parent_mcid,
+    end_mcid,
+    subsidiary_entity_name,
+    overage_flag,
+    segment,
+    region,
+    product_family,
+    base_currency,
+    cc_fx_rate,
+    fx_date,
+    arr,
+    baseline_arr_local_currency,
+    dw_modified_date,
+    dw_created_date,
+    parent_sf_id,
+    parent_sf_name,
+    record_source ,
+    cohort_actions,
+    sku
+  )
+select snapshot_date,
+  ultimate_parent_id,
+  ultimate_parent_name,
+  duns_name,
+  duns_number,
+  parent_duns_name,
+  parent_duns_number,
+  domesticultimatedunsnumber,
+  globalultimatedunsnumber,
+  new_product_solution,
+  new_product_line,
+  updated_product_group,
+  new_product,
+  new_line_of_business,
+  new_line_of_business_sub_category,
+  c_name,
+  parent_ns_id,
+  end_ns_id,
+  name,
+  parent_name,
+  end_name,
+  mcid,
+  parent_mcid,
+  end_mcid,
+  subsidiary_entity_name,
+  overage_flag,
+  segment,
+  region,
+  product_family,
+  base_currency,
+  cc_fx_rate,
+  fx_date,
+  arr,
+  baseline_arr_local_currency,
+  dw_modified_date,
+  dw_created_date,
+  parent_sf_id,
+  parent_sf_name,
+  record_source,
+  'New record inserted for Option C' as cohort_actions,
+  sku
+from temp_to_insert_records_option_c;
+insert into sensitivity_analysis_actions_temp
+select mcid,
+  snapshot_date,
+  'Manual',
+  arr_old,
+  null,
+  arr_new,
+  null,
+  'Option C',
+  null,
+  snapshot_date_copied
+from temp_option_c a;
+drop table if exists sandbox_pd.sensitivity_analysis_actions_cohort_1;
+create table sandbox_pd.sensitivity_analysis_actions_cohort_1 as
 select *
-from temp_pb_max
-where rnk = 1;
-update sandbox_pd.SST_adaptive_customer_bridge_movements a
-set sku = b.sku
-from temp_CB_sku b
-where a.master_customer_id = b.master_customer_id
-  and a.snapshot_date = b.snapshot_date;
+from sensitivity_analysis_actions_temp;
+end if;
+--#################################################
+--COHORT 2 ACTIONS
+--#################################################
+if run_cohort_2 = 1 then drop table if exists sensitivity_analysis_actions_cohort2_temp;
+create table sensitivity_analysis_actions_cohort2_temp as
+select distinct "Formatted MCID" as "End Customer MCID" --, "Formatted Snapshot_Date"::date as "Snapshot Date (Month)"
+,
+  (
+    date_trunc('month', "Formatted Snapshot_Date"::date) + interval '1 month' - interval '1 day'
+  )::date as "Snapshot Date (Month)",
+  'Overwrite with latest Non-Spike Value - Non U&D' as "Remedial Action",
+  null as arr_old,
+  null::numeric as arr_previous_month,
+  null as arr_new,
+  null::Text as de_comments,
+  null::Text as da_comments,
+  null::Text as no_of_records_in_sst_postive_arr,
+  (
+    date_trunc(
+      'month',
+      "Date of Alt. Churn Values of 6 month period - Group"::Date
+    ) + interval '1 month' - interval '1 day'
+  )::date as snapshot_date_copied_farah,
+  null::date as snapshot_date_copied
+from sandbox_pd.SST_COHORT_2
+where 1 = 1
+  and "Date of Alt. Churn Values of 6 month period - Group" is not null;
+--delete data that has got only one in group
+delete from sensitivity_analysis_actions_cohort2_temp a using (
+    select "End Customer MCID",
+      max(snapshot_date_copied_farah) as snapshot_date_copied_farah
+    from sensitivity_analysis_actions_cohort2_temp
+    group by "End Customer MCID",
+      snapshot_date_copied_farah
+    having count("Snapshot Date (Month)") = 1
+  ) b
+where a."End Customer MCID" = b."End Customer MCID"
+  and a.snapshot_date_copied_farah = b.snapshot_date_copied_farah;
+update sensitivity_analysis_actions_cohort2_temp a
+set snapshot_date_copied = b.snapshot_date_copied
+from (
+    select "End Customer MCID",
+      max("Snapshot Date (Month)") as snapshot_date_copied,
+      snapshot_date_copied_farah
+    from sensitivity_analysis_actions_cohort2_temp
+    group by "End Customer MCID",
+      snapshot_date_copied_farah
+  ) b
+where a."End Customer MCID" = b."End Customer MCID"
+  and a.snapshot_date_copied_farah = b.snapshot_date_copied_farah;
+delete --select *
+from sensitivity_analysis_actions_cohort2_temp a
+where snapshot_date_copied = "Snapshot Date (Month)";
+delete from sensitivity_analysis_actions_cohort2_temp a
+where "Snapshot Date (Month)" >= '2023-01-01';
+--#################################################################
+--case 2: get latest arr and delete + insert
+--#################################################################
+drop table if exists temp_to_delete_records;
+create temporary table temp_to_delete_records as
+select distinct "End Customer MCID",
+  "Snapshot Date (Month)",
+  b.overage_flag,
+  a.snapshot_date_copied
+from sensitivity_analysis_actions_cohort2_temp a
+  left join sandbox_pd.sst b on a."End Customer MCID" = b.mcid
+  and a."Snapshot Date (Month)" = b.snapshot_date
+where 1 = 1
+order by 1,
+  2;
+--delete records from sst table
+delete from sandbox_pd.sst a using temp_to_delete_records b
+where a.mcid = b."End Customer MCID"
+  and b."Snapshot Date (Month)" = a.snapshot_date
+  and a.overage_flag ilike '%N%';
+--copy records from sst
+drop table if exists temp_to_insert_records;
+create temporary table temp_to_insert_records as with temp as (
+  select distinct b.snapshot_date_copied as snapshot_date_copied,
+    a.ultimate_parent_id,
+    a.ultimate_parent_name,
+    a.duns_name,
+    a.duns_number,
+    a.parent_duns_name,
+    a.parent_duns_number,
+    a.domesticultimatedunsnumber,
+    a.globalultimatedunsnumber,
+    a.new_product_solution,
+    a.new_product_line,
+    a.updated_product_group,
+    a.new_product,
+    a.new_line_of_business,
+    a.new_line_of_business_sub_category,
+    a.c_name,
+    a.parent_ns_id,
+    a.end_ns_id,
+    a.name,
+    a.parent_name,
+    a.end_name,
+    a.mcid,
+    a.parent_mcid,
+    a.end_mcid,
+    a.subsidiary_entity_name,
+    a.overage_flag,
+    a.segment,
+    a.region,
+    a.product_family,
+    a.base_currency,
+    a.cc_fx_rate,
+    a.fx_date,
+    a.arr,
+    a.baseline_arr_local_currency,
+    a.dw_modified_date,
+    a.dw_created_date,
+    a.parent_sf_id,
+    a.parent_sf_name,
+    a.sku
+  from sandbox_pd.sst a
+    join (
+      select distinct "End Customer MCID",
+        snapshot_date_copied
+      from temp_to_delete_records
+    ) b on a.mcid = b."End Customer MCID"
+    and a.snapshot_date = b.snapshot_date_copied
+    and a.overage_flag ilike '%N%'
+),
+temp1 as (
+  select distinct "End Customer MCID",
+    "Snapshot Date (Month)",
+    snapshot_date_copied
+  from sensitivity_analysis_actions_cohort2_temp
+)
+select distinct b."Snapshot Date (Month)" as snapshot_date,
+  a.ultimate_parent_id,
+  a.ultimate_parent_name,
+  a.duns_name,
+  a.duns_number,
+  a.parent_duns_name,
+  a.parent_duns_number,
+  a.domesticultimatedunsnumber,
+  a.globalultimatedunsnumber,
+  a.new_product_solution,
+  a.new_product_line,
+  a.updated_product_group,
+  a.new_product,
+  a.new_line_of_business,
+  a.new_line_of_business_sub_category,
+  a.c_name,
+  a.parent_ns_id,
+  a.end_ns_id,
+  a.name,
+  a.parent_name,
+  a.end_name,
+  a.mcid,
+  a.parent_mcid,
+  a.end_mcid,
+  a.subsidiary_entity_name,
+  a.overage_flag,
+  a.segment,
+  a.region,
+  a.product_family,
+  a.base_currency,
+  a.cc_fx_rate,
+  a.fx_date,
+  a.arr,
+  a.baseline_arr_local_currency,
+  a.dw_modified_date,
+  a.dw_created_date,
+  a.parent_sf_id,
+  a.parent_sf_name,
+  a.sku
+from temp a
+  join temp1 b on a.mcid = b."End Customer MCID"
+  and a.snapshot_date_copied = b.snapshot_date_copied;
+--update snapshot_date_copied and new arr value in sensitivity_analysis_actions_cohort2
+with temp as (
+  select a.mcid,
+    a.snapshot_date,
+    sum(a.arr) as arr_new
+  from temp_to_insert_records a
+  group by 1,
+    2
+)
+update sensitivity_analysis_actions_cohort2_temp a
+set arr_new = b.arr_new
+from temp b
+where a."End Customer MCID" = b.mcid
+  and a."Snapshot Date (Month)" = b.snapshot_date;
+insert into sandbox_pd.sst (
+    snapshot_date,
+    ultimate_parent_id,
+    ultimate_parent_name,
+    duns_name,
+    duns_number,
+    parent_duns_name,
+    parent_duns_number,
+    domesticultimatedunsnumber,
+    globalultimatedunsnumber,
+    new_product_solution,
+    new_product_line,
+    updated_product_group,
+    new_product,
+    new_line_of_business,
+    new_line_of_business_sub_category,
+    c_name,
+    parent_ns_id,
+    end_ns_id,
+    name,
+    parent_name,
+    end_name,
+    mcid,
+    parent_mcid,
+    end_mcid,
+    subsidiary_entity_name,
+    overage_flag,
+    segment,
+    region,
+    product_family,
+    base_currency,
+    cc_fx_rate,
+    fx_date,
+    arr,
+    baseline_arr_local_currency,
+    dw_modified_date,
+    dw_created_date,
+    parent_sf_id,
+    parent_sf_name,
+    record_source,
+    cohort_actions,
+    sku
+  )
+select snapshot_date,
+  ultimate_parent_id,
+  ultimate_parent_name,
+  duns_name,
+  duns_number,
+  parent_duns_name,
+  parent_duns_number,
+  domesticultimatedunsnumber,
+  globalultimatedunsnumber,
+  new_product_solution,
+  new_product_line,
+  updated_product_group,
+  new_product,
+  new_line_of_business,
+  new_line_of_business_sub_category,
+  c_name,
+  parent_ns_id,
+  end_ns_id,
+  name,
+  parent_name,
+  end_name,
+  mcid,
+  parent_mcid,
+  end_mcid,
+  subsidiary_entity_name,
+  overage_flag,
+  segment,
+  region,
+  product_family,
+  base_currency,
+  cc_fx_rate,
+  fx_date,
+  arr,
+  baseline_arr_local_currency,
+  dw_modified_date,
+  dw_created_date,
+  parent_sf_id,
+  parent_sf_name,
+  record_source,
+  concat(
+    'Deleted data and inserted data snapshot from latest snapshot',
+    ''::Text
+  ) as cohort_actions,
+  sku
+from temp_to_insert_records;
+drop table if exists sandbox_pd.sensitivity_analysis_actions_cohort_2;
+create table sandbox_pd.sensitivity_analysis_actions_cohort_2 as
+select *
+from sensitivity_analysis_actions_cohort2_temp;
+end if;
 END;
 $function$;

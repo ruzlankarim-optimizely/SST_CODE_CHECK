@@ -1,3 +1,13 @@
+DROP TABLE IF EXISTS sandbox.sst_customer_bridge_cm;
+CREATE TABLE sandbox.sst_customer_bridge_cm AS
+SELECT *,
+  NULL AS pathways
+FROM ufdm.sst_customer_bridge scb;
+--#############################################
+--CHURN MIGRATION
+--#############################################
+--SELECT * FROM arr_product_bridge_tmp WHERE mcid = 'f3909c43-53c3-e611-80f1-c4346bac4838' 
+----
 --#############################################
 --CHURN MIGRATION
 --#############################################
@@ -21,7 +31,7 @@ CREATE temp table churn_migration_classifiers_pg as (
       rt.customer_arr_change_lcu as pg_arr_change_lcu,
       rt.customer_bridge as pg_bridge
     FROM sandbox.churn_migration_classifiers it3
-      left join sandbox.sst_customer_bridge_churn_migration_version2 rt -- replace with product group bridge
+      left join sandbox.sst_customer_bridge_cm rt -- replace with product group bridge
       -- Here 
       on it3.evaluation_period = rt.evaluation_period
       and it3.mcid = rt.mcid
@@ -158,21 +168,25 @@ CREATE temp table churn_migration_classifiers_pg as (
       case
         when "PG Migration: Rolled Up Amount" is not NULL
         AND pg_bridge <> 'Flat'
-        AND pg_bridge <> 'Price Uplift' THEN case
-          when pg_bridge = 'New'
-          or pg_bridge = 'Churn' then "Movement Classification"
-          else concat(
-            pg_bridge,
-            ' - ',
-            split_part("Movement Classification", ' - ', 2)
-          )
-        end
+        AND pg_bridge <> 'Price Uplift'
+        AND pg_bridge <> 'New'
+        AND pg_bridge <> 'Churn' THEN --        case
+        --          when pg_bridge = 'New'
+        --          or pg_bridge = 'Churn' then "Movement Classification"
+        --          else 
+        concat(
+          pg_bridge,
+          ' - ',
+          split_part("Movement Classification", ' - ', 2)
+        ) --        end
         else null
       end as "PG Migration: Classification",
       case
         when "PG Leftover: Rolled Up Amount" is not null
         AND pg_bridge <> 'Flat'
-        AND pg_bridge <> 'Price Uplift' then pg_bridge
+        AND pg_bridge <> 'Price Uplift'
+        AND pg_bridge <> 'New'
+        AND pg_bridge <> 'Churn' then pg_bridge
         else null
       end as "PG Leftover: Classification"
     from initial_table_8
@@ -386,7 +400,7 @@ SELECT a.*,
   "PG Leftover: Rolled Up Amount LCU",
   pg_bridge,
   "PG Migration: Classification"
-FROM sandbox.sst_customer_bridge_churn_migration_version2 AS a
+FROM sandbox.sst_customer_bridge_cm AS a
   JOIN sandbox.churn_migration_test_pg AS b ON a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.baseline_currency = b.currency_code
@@ -403,7 +417,7 @@ SELECT a.*,
   "PG Leftover: Rolled Up Amount LCU",
   "PG Migration: Classification",
   "PG Leftover: Classification"
-FROM sandbox.sst_customer_bridge_churn_migration_version2 AS a
+FROM sandbox.sst_customer_bridge_cm AS a
   JOIN sandbox.churn_migration_test_pg AS b ON a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.baseline_currency = b.currency_code
@@ -411,14 +425,14 @@ FROM sandbox.sst_customer_bridge_churn_migration_version2 AS a
 WHERE "PG Migration: Classification" ILIKE ('%migration%')
   AND "PG Leftover: Rolled Up Amount" IS NOT NULL;
 --
-DELETE FROM sandbox.sst_customer_bridge_churn_migration_version2 AS a USING sandbox.PG_migration_default AS b
+DELETE FROM sandbox.sst_customer_bridge_cm AS a USING sandbox.PG_migration_default AS b
 WHERE a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.baseline_currency = b.baseline_currency
   AND a.customer_bridge = b.customer_bridge;
 --
 --  SELECT * FROM sandbox.PG_migration_default
-INSERT INTO sandbox.sst_customer_bridge_churn_migration_version2 AS a (
+INSERT INTO sandbox.sst_customer_bridge_cm AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -474,14 +488,14 @@ WHERE mcid = b.mcid
   AND customer_bridge = b.customer_bridge;
 --
 --
-DELETE FROM sandbox.sst_customer_bridge_churn_migration_version2 AS a USING sandbox.PG_migration_split AS b
+DELETE FROM sandbox.sst_customer_bridge_cm AS a USING sandbox.PG_migration_split AS b
 WHERE a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.baseline_currency = b.baseline_currency
   AND a.customer_bridge = b.customer_bridge;
 --
 --
-INSERT INTO sandbox.sst_customer_bridge_churn_migration_version2 AS a (
+INSERT INTO sandbox.sst_customer_bridge_cm AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -536,7 +550,7 @@ WHERE mcid = b.mcid
   AND evaluation_period = b.evaluation_period
   AND baseline_currency = b.baseline_currency
   AND customer_bridge = b.customer_bridge;
-INSERT INTO sandbox.sst_customer_bridge_churn_migration_version2 AS a (
+INSERT INTO sandbox.sst_customer_bridge_cm AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -596,7 +610,7 @@ WHERE mcid = b.mcid
 --
 --
 --
-UPDATE sandbox.sst_customer_bridge_churn_migration_version2 AS a
+UPDATE sandbox.sst_customer_bridge_cm AS a
 SET customer_bridge = split_part(customer_bridge, ' -- ', 1),
   pathways = split_part(customer_bridge, ' -- ', 2)
 WHERE customer_bridge ILIKE '%migration --%';
@@ -621,7 +635,7 @@ SELECT evaluation_period,
   sum(current_period_customer_lcu) AS current_period_customer_lcu,
   sum(prior_period_customer_arr_lcu) AS prior_period_customer_arr_lcu,
   sum(customer_arr_change_lcu) AS customer_arr_change_lcu
-FROM sandbox.sst_customer_bridge_churn_migration_version2
+FROM sandbox.sst_customer_bridge_cm
 GROUP BY 1,
   2,
   3,
@@ -635,8 +649,8 @@ GROUP BY 1,
   11,
   12,
   13;
-TRUNCATE TABLE sandbox.sst_customer_bridge_churn_migration_version2;
-INSERT INTO sandbox.sst_customer_bridge_churn_migration_version2(
+TRUNCATE TABLE sandbox.sst_customer_bridge_cm;
+INSERT INTO sandbox.sst_customer_bridge_cm(
     evaluation_period,
     prior_period,
     current_period,

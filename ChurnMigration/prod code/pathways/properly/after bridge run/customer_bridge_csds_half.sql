@@ -297,6 +297,10 @@ create temp table temp_pb_downsell_final as with temp as (
     b.product_bridge,
     b.product_arr_change_ccfx,
     b.product_arr_change_lcu,
+    CASE
+      WHEN product_bridge ilike('%migration') THEN TRUE
+      ELSE FALSE
+    END AS migration_flag,
     count(a.mcid) over(
       PARTITION BY a.mcid,
       a.evaluation_period,
@@ -326,7 +330,8 @@ create temp table temp_pb_downsell_final as with temp as (
     AND b.currency_code = a.baseline_currency
   where a.customer_bridge not in ('Flat', 'Rounding')
     and a.evaluation_period = b.evaluation_period
-    and customer_arr_change_ccfx <= 0 --    AND a.mcid = 'd74620b9-768f-dd11-a26e-0018717a8c82'
+    and customer_arr_change_ccfx <= 0 --    
+    -- AND a.mcid = '3008e8bf-2fe5-e411-9afb-0050568d2da8'
 ),
 classifier AS (
   select *,
@@ -335,14 +340,8 @@ classifier AS (
       ELSE CASE
         WHEN abs(round(total_pb_amount_ccfx)) < abs(round(customer_arr_change_ccfx)) THEN 'LESS'
         ELSE CASE
-          WHEN abs(round(total_pb_amount_ccfx)) > abs(round(customer_arr_change_ccfx)) THEN CASE
-            WHEN count_pb_records > count_pb_bridges
-            OR product_bridge ILIKE ('%migration%') THEN 'GREATER WITH MIGRATION'
-            ELSE CASE
-              WHEN product_bridge NOT ILIKE ('%migration%') THEN 'GREATER WITHOUT MIGRATION'
-              ELSE NULL
-            END
-          END
+          WHEN abs(round(total_pb_amount_ccfx)) > abs(round(customer_arr_change_ccfx)) THEN 'GREATER'
+          ELSE NULL
         END
       END
     END AS flag
@@ -350,17 +349,27 @@ classifier AS (
 )
 SELECT a.*,
   CASE
-    WHEN abs(round(total_pb_amount_ccfx)) < abs(round(customer_arr_change_ccfx)) THEN round(
+    WHEN flag = 'LESS' THEN round(
       (customer_arr_change_ccfx - total_pb_amount_ccfx) / count_pb_records
     )
     ELSE NULL
   END AS leftover_ccfx,
   CASE
-    WHEN abs(round(total_pb_amount_lcu)) < abs(round(customer_arr_change_lcu)) THEN round(
+    WHEN flag = 'LESS' THEN round(
       customer_arr_change_lcu - total_pb_amount_lcu / count_pb_records
     )
     ELSE NULL
-  END AS leftover_lcu
+  END AS leftover_lcu,
+  CASE
+    WHEN flag = 'GREATER' THEN round(
+      customer_arr_change_ccfx * (product_arr_change_ccfx / total_pb_amount_ccfx)
+    )
+  END AS greater_amount_ccfx,
+  CASE
+    WHEN flag = 'GREATER' THEN round(
+      customer_arr_change_lcu * (product_arr_change_lcu / total_pb_amount_lcu)
+    )
+  END AS greater_amount_lcu
 FROM classifier AS a;
 -- Handle Equal delete previous record add new record using product group bridge
 DELETE FROM arr_bridge_tmp AS a USING temp_pb_downsell_final AS b
@@ -368,7 +377,7 @@ WHERE a.evaluation_period = b.evaluation_period
   AND a.mcid = b.mcid
   AND a.baseline_currency = b.baseline_currency
   AND a.customer_bridge = b.customer_bridge
-  AND b.flag IN ('EQUAL', 'LESS');
+  AND b.flag IS NOT NULL;
 insert into arr_bridge_tmp (
     evaluation_period,
     prior_period,
@@ -513,19 +522,64 @@ GROUP BY 1,
   8,
   9,
   16;
-UPDATE arr_bridge_tmp AS a
-SET customer_bridge = CASE
-    WHEN b.flag = 'GREATER WITH MIGRATION' THEN 'Downsell - migration'
-    ELSE 'Downsell'
-  END
-FROM temp_pb_downsell_final AS b
-WHERE a.mcid = b.mcid
-  AND a.evaluation_period = b.evaluation_period
-  AND a.customer_bridge = b.customer_bridge
-  AND b.flag IN (
-    'GREATER WITH MIGRATION',
-    'GREATER WITHOUT MIGRATION'
-  );
+insert into arr_bridge_tmp (
+    evaluation_period,
+    prior_period,
+    current_period,
+    current_master_customer_id,
+    prior_master_customer_id,
+    mcid,
+    name,
+    baseline_currency,
+    subsidiary_entity_name,
+    prior_arr_usd_ccfx,
+    current_arr_usd_ccfx,
+    customer_arr_change_ccfx,
+    prior_arr_lcu,
+    current_arr_lcu,
+    customer_arr_change_lcu,
+    customer_bridge --, winback_period_days, wip_flag
+  )
+select evaluation_period,
+  prior_period,
+  current_period,
+  current_master_customer_id,
+  prior_master_customer_id,
+  mcid,
+  name,
+  baseline_currency,
+  subsidiary_entity_name,
+  prior_arr_usd_ccfx * abs(
+    greater_amount_ccfx / case
+      when customer_arr_change_ccfx = 0 then 1
+      else customer_arr_change_ccfx
+    end
+  ) AS prior_arr_usd_ccfx,
+  current_arr_usd_ccfx * abs(
+    greater_amount_ccfx / case
+      when customer_arr_change_ccfx = 0 then 1
+      else customer_arr_change_ccfx
+    end
+  ) AS current_arr_usd_ccfx,
+  greater_amount_ccfx AS customer_arr_change_ccfx,
+  --customer_arr_change_ccfx,
+  prior_arr_lcu * abs(
+    greater_amount_lcu / case
+      when customer_arr_change_lcu = 0 then 1
+      else customer_arr_change_lcu
+    end
+  ) AS prior_arr_lcu,
+  current_arr_lcu * abs(
+    greater_amount_lcu / case
+      when customer_arr_change_lcu = 0 then 1
+      else customer_arr_change_lcu
+    end
+  ) AS current_arr_lcu,
+  greater_amount_lcu AS customer_arr_change_lcu,
+  --  customer_arr_change_lcu,
+  product_bridge AS customer_bridge --customer_bridge --, winback_period_days, wip_flag
+from temp_pb_downsell_final AS b
+WHERE b.flag IN ('GREATER');
 --############################
 --cross sell
 --############################
@@ -557,6 +611,10 @@ create temp table temp_pb_crosssell_final as with temp as (
     b.product_bridge,
     b.product_arr_change_ccfx,
     b.product_arr_change_lcu,
+    CASE
+      WHEN product_bridge ilike('%migration') THEN TRUE
+      ELSE FALSE
+    END AS migration_flag,
     count(a.mcid) over(
       PARTITION BY a.mcid,
       a.evaluation_period,
@@ -586,8 +644,9 @@ create temp table temp_pb_crosssell_final as with temp as (
     AND b.currency_code = a.baseline_currency
   where a.customer_bridge not in ('Flat', 'Rounding')
     and a.evaluation_period = b.evaluation_period
-    and customer_arr_change_ccfx > 0 --    
-    --    AND a.mcid = 'b26166bb-17ca-12e3-c980-affe0b81894d'
+    and customer_arr_change_ccfx > 0
+    and customer_bridge not in ('New') --    
+    -- AND a.mcid = '3008e8bf-2fe5-e411-9afb-0050568d2da8'
 ),
 classifier AS (
   select *,
@@ -596,14 +655,8 @@ classifier AS (
       ELSE CASE
         WHEN abs(round(total_pb_amount_ccfx)) < abs(round(customer_arr_change_ccfx)) THEN 'LESS'
         ELSE CASE
-          WHEN abs(round(total_pb_amount_ccfx)) > abs(round(customer_arr_change_ccfx)) THEN CASE
-            WHEN count_pb_records > count_pb_bridges
-            OR product_bridge ILIKE ('%migration%') THEN 'GREATER WITH MIGRATION'
-            ELSE CASE
-              WHEN product_bridge NOT ILIKE ('%migration%') THEN 'GREATER WITHOUT MIGRATION'
-              ELSE NULL
-            END
-          END
+          WHEN abs(round(total_pb_amount_ccfx)) > abs(round(customer_arr_change_ccfx)) THEN 'GREATER'
+          ELSE NULL
         END
       END
     END AS flag
@@ -611,24 +664,35 @@ classifier AS (
 )
 SELECT a.*,
   CASE
-    WHEN abs(round(total_pb_amount_ccfx)) < abs(round(customer_arr_change_ccfx)) THEN round(
+    WHEN flag = 'LESS' THEN round(
       (customer_arr_change_ccfx - total_pb_amount_ccfx) / count_pb_records
     )
     ELSE NULL
   END AS leftover_ccfx,
   CASE
-    WHEN abs(round(total_pb_amount_lcu)) < abs(round(customer_arr_change_lcu)) THEN round(
+    WHEN flag = 'LESS' THEN round(
       customer_arr_change_lcu - total_pb_amount_lcu / count_pb_records
     )
     ELSE NULL
-  END AS leftover_lcu
+  END AS leftover_lcu,
+  CASE
+    WHEN flag = 'GREATER' THEN round(
+      customer_arr_change_ccfx * (product_arr_change_ccfx / total_pb_amount_ccfx)
+    )
+  END AS greater_amount_ccfx,
+  CASE
+    WHEN flag = 'GREATER' THEN round(
+      customer_arr_change_lcu * (product_arr_change_lcu / total_pb_amount_lcu)
+    )
+  END AS greater_amount_lcu
 FROM classifier AS a;
+-- Handle Equal delete previous record add new record using product group bridge
 DELETE FROM arr_bridge_tmp AS a USING temp_pb_crosssell_final AS b
 WHERE a.evaluation_period = b.evaluation_period
   AND a.mcid = b.mcid
   AND a.baseline_currency = b.baseline_currency
   AND a.customer_bridge = b.customer_bridge
-  AND b.flag IN ('EQUAL', 'LESS');
+  AND b.flag IS NOT NULL;
 insert into arr_bridge_tmp (
     evaluation_period,
     prior_period,
@@ -759,7 +823,7 @@ FROM (
       ) AS current_arr_lcu,
       leftover_lcu AS customer_arr_change_lcu,
       --  customer_arr_change_lcu,
-      customer_bridge --, winback_period_days, wip_flag ('Cross-sell', 'Cross-sell - migration')
+      customer_bridge --, winback_period_days, wip_flag
     from temp_pb_crosssell_final AS b
     WHERE b.flag IN ('LESS')
   ) AS a
@@ -773,19 +837,64 @@ GROUP BY 1,
   8,
   9,
   16;
-UPDATE arr_bridge_tmp AS a
-SET customer_bridge = CASE
-    WHEN b.flag = 'GREATER WITH MIGRATION' THEN 'Cross-sell - migration'
-    ELSE 'Cross-sell'
-  END
-FROM temp_pb_crosssell_final AS b
-WHERE a.mcid = b.mcid
-  AND a.evaluation_period = b.evaluation_period
-  AND a.customer_bridge = b.customer_bridge
-  AND b.flag IN (
-    'GREATER WITH MIGRATION',
-    'GREATER WITHOUT MIGRATION'
-  );
+insert into arr_bridge_tmp (
+    evaluation_period,
+    prior_period,
+    current_period,
+    current_master_customer_id,
+    prior_master_customer_id,
+    mcid,
+    name,
+    baseline_currency,
+    subsidiary_entity_name,
+    prior_arr_usd_ccfx,
+    current_arr_usd_ccfx,
+    customer_arr_change_ccfx,
+    prior_arr_lcu,
+    current_arr_lcu,
+    customer_arr_change_lcu,
+    customer_bridge --, winback_period_days, wip_flag
+  )
+select evaluation_period,
+  prior_period,
+  current_period,
+  current_master_customer_id,
+  prior_master_customer_id,
+  mcid,
+  name,
+  baseline_currency,
+  subsidiary_entity_name,
+  prior_arr_usd_ccfx * abs(
+    greater_amount_ccfx / case
+      when customer_arr_change_ccfx = 0 then 1
+      else customer_arr_change_ccfx
+    end
+  ) AS prior_arr_usd_ccfx,
+  current_arr_usd_ccfx * abs(
+    greater_amount_ccfx / case
+      when customer_arr_change_ccfx = 0 then 1
+      else customer_arr_change_ccfx
+    end
+  ) AS current_arr_usd_ccfx,
+  greater_amount_ccfx AS customer_arr_change_ccfx,
+  --customer_arr_change_ccfx,
+  prior_arr_lcu * abs(
+    greater_amount_lcu / case
+      when customer_arr_change_lcu = 0 then 1
+      else customer_arr_change_lcu
+    end
+  ) AS prior_arr_lcu,
+  current_arr_lcu * abs(
+    greater_amount_lcu / case
+      when customer_arr_change_lcu = 0 then 1
+      else customer_arr_change_lcu
+    end
+  ) AS current_arr_lcu,
+  greater_amount_lcu AS customer_arr_change_lcu,
+  --  customer_arr_change_lcu,
+  product_bridge AS customer_bridge --customer_bridge --, winback_period_days, wip_flag
+from temp_pb_crosssell_final AS b
+WHERE b.flag IN ('GREATER');
 insert into ryzlan.sst_customer_bridge_csds_half(
     evaluation_period,
     prior_period,

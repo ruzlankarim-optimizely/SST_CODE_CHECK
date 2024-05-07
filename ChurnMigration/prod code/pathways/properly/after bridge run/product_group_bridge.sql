@@ -203,7 +203,9 @@ CREATE temp table churn_migration_classifiers_pg as (
       case
         when "PG Leftover: Rolled Up Amount" is not null
         AND pg_bridge <> 'Flat'
-        AND pg_bridge <> 'Price Uplift' then pg_bridge
+        AND pg_bridge <> 'Price Uplift'
+        AND pg_bridge <> 'New'
+        AND pg_bridge <> 'Churn' then pg_bridge
         else null
       end as "PG Leftover: Classification"
     from initial_table_8

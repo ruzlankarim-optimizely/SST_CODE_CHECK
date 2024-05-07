@@ -1,27 +1,12 @@
--- New script in dw-prod-rds-master.cr9dekxonyuj.us-east-1.rds.amaz.
--- Date: May 1, 2024
--- Time: 1:39:24 AM
-ALTER TABLE sandbox.sst_product_solution_bridge
-ADD pathways VARCHAR(255);
-ALTER TABLE sandbox.sst_product_solution_bridge
-ADD unique_id VARCHAR(255);
-SELECT *,
-  NULL AS pathways,
-  NULL AS unique_id
-FROM ufdm.sst_product_bridge_product_solution
-LIMIT 10 DROP TABLE IF EXISTS sandbox.sst_product_solution_bridge;
-CREATE TABLE sandbox.sst_product_solution_bridge AS
+DROP TABLE IF EXISTS sandbox.sst_product_solution_bridge_cloud;
+CREATE TABLE sandbox.sst_product_solution_bridge_cloud AS
 SELECT *,
   NULL AS pathways
-FROM ufdm.sst_product_bridge_product_solution;
-SELECT *
-FROM sandbox.sst_product_solution_bridge
-LIMIT 10;
-TRUNCATE TABLE sandbox.sst_product_solution_bridge;
+FROM ufdm.sst_product_bridge_product_solution_split_bridge_report;
+TRUNCATE TABLE sandbox.sst_product_solution_bridge_cloud;
 --#############################################
 --CHURN MIGRATION
 --#############################################
-
 --SELECT * FROM arr_product_bridge_tmp WHERE mcid = 'f3909c43-53c3-e611-80f1-c4346bac4838' 
 ----
 Drop table if exists churn_migration_classifiers_pg;
@@ -42,7 +27,7 @@ CREATE temp table churn_migration_classifiers_pg as (
       rt.product_arr_change_lcu as pg_arr_change_lcu,
       rt.product_bridge as pg_bridge
     FROM sandbox.churn_migration_classifiers it3
-      left join sandbox.sst_product_solution_bridge rt -- replace with product group bridge
+      left join sandbox.sst_product_solution_bridge_cloud rt -- replace with product group bridge
       -- Here 
       on it3.evaluation_period = rt.evaluation_period
       and COALESCE (
@@ -200,8 +185,7 @@ CREATE temp table churn_migration_classifiers_pg as (
           pg_bridge,
           ' - ',
           split_part("Movement Classification", ' - ', 2)
-        )
-        end
+        ) -- end
         else null
       end as "PG Migration: Classification",
       case
@@ -240,7 +224,8 @@ CREATE temp table churn_migration_classifiers_pg as (
         pg_arr_change
       ) AS count_migrations
     from adding_classification
-  ), --    SELECT * FROM double_classification_fix WHERE "PG Migration: Classification" IS NOT NUL
+  ),
+  --    SELECT * FROM double_classification_fix WHERE "PG Migration: Classification" IS NOT NUL
   double_classification_marker AS (
     SELECT *,
       CASE
@@ -424,7 +409,7 @@ SELECT a.*,
   "PG Leftover: Rolled Up Amount LCU",
   pg_bridge,
   "PG Migration: Classification"
-FROM sandbox.sst_product_solution_bridge AS a
+FROM sandbox.sst_product_solution_bridge_cloud AS a
   JOIN sandbox.churn_migration_test_pg AS b ON a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
@@ -448,7 +433,7 @@ SELECT a.*,
   "PG Leftover: Rolled Up Amount LCU",
   "PG Migration: Classification",
   "PG Leftover: Classification"
-FROM sandbox.sst_product_solution_bridge AS a
+FROM sandbox.sst_product_solution_bridge_cloud AS a
   JOIN sandbox.churn_migration_test_pg AS b ON a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
@@ -463,7 +448,7 @@ FROM sandbox.sst_product_solution_bridge AS a
 WHERE "PG Migration: Classification" ILIKE ('%migration%')
   AND "PG Leftover: Rolled Up Amount" IS NOT NULL;
 --
-DELETE FROM sandbox.sst_product_solution_bridge AS a USING sandbox.PG_migration_default AS b
+DELETE FROM sandbox.sst_product_solution_bridge_cloud AS a USING sandbox.PG_migration_default AS b
 WHERE a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
@@ -477,7 +462,7 @@ WHERE a.mcid = b.mcid
   AND a.product_bridge = b.product_bridge;
 --
 --  SELECT * FROM sandbox.PG_migration_default
-INSERT INTO sandbox.sst_product_solution_bridge AS a (
+INSERT INTO sandbox.sst_product_solution_bridge_cloud AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -552,7 +537,7 @@ WHERE mcid = b.mcid
   AND product_bridge = b.product_bridge;
 --
 --
-DELETE FROM sandbox.sst_product_solution_bridge AS a USING sandbox.PG_migration_split AS b
+DELETE FROM sandbox.sst_product_solution_bridge_cloud AS a USING sandbox.PG_migration_split AS b
 WHERE a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
@@ -566,7 +551,7 @@ WHERE a.mcid = b.mcid
   AND a.product_bridge = b.product_bridge;
 --
 --
-INSERT INTO sandbox.sst_product_solution_bridge AS a (
+INSERT INTO sandbox.sst_product_solution_bridge_cloud AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -640,7 +625,7 @@ WHERE mcid = b.mcid
     b.current_product_solution
   )
   AND product_bridge = b.product_bridge;
-INSERT INTO sandbox.sst_product_solution_bridge AS a (
+INSERT INTO sandbox.sst_product_solution_bridge_cloud AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -719,7 +704,7 @@ WHERE mcid = b.mcid
 --
 --
 --
-UPDATE sandbox.sst_product_solution_bridge AS a
+UPDATE sandbox.sst_product_solution_bridge_cloud AS a
 SET product_bridge = split_part(product_bridge, ' -- ', 1),
   pathways = split_part(product_bridge, ' -- ', 2)
 WHERE product_bridge ILIKE '%migration --%';
@@ -750,7 +735,7 @@ SELECT evaluation_period,
   sum(current_period_product_arr_lcu) AS current_period_product_arr_lcu,
   sum(prior_period_product_arr_lcu) AS prior_period_product_arr_lcu,
   sum(product_arr_change_lcu) AS product_arr_change_lcu
-FROM sandbox.sst_product_solution_bridge
+FROM sandbox.sst_product_solution_bridge_cloud
 GROUP BY 1,
   2,
   3,
@@ -770,8 +755,8 @@ GROUP BY 1,
   17,
   18,
   19;
-TRUNCATE TABLE sandbox.sst_product_solution_bridge;
-INSERT INTO sandbox.sst_product_solution_bridge(
+TRUNCATE TABLE sandbox.sst_product_solution_bridge_cloud;
+INSERT INTO sandbox.sst_product_solution_bridge_cloud(
     evaluation_period,
     prior_period,
     current_period,

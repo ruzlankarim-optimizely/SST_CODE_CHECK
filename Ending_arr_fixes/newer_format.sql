@@ -1,7 +1,4 @@
--- New script in dw-prod-rds-master.cr9dekxonyuj.us-east-1.rds.amaz.
--- Date: May 14, 2024
--- Time: 4:20:43 PM
-ALTER TABLE ryzlan.sst_reversal_fix_4_1 DROP COLUMN ending_arr_comment DROP COLUMN sum_arr DROP TABLE IF EXISTS ryzlan.ending_arr_marker;
+DROP TABLE IF EXISTS ryzlan.ending_arr_marker;
 CREATE TABLE ryzlan.ending_arr_marker AS (
   WITH main AS (
     SELECT --id,
@@ -39,8 +36,7 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
       customer_arr_change_ccfx,
       customer_arr_change_lcu,
       customer_bridge
-    FROM ryzlan.sst_cb_reversal_fix_4_1 --ryzlan.sst_cb_reversal_fix_1
-      --ryzlan.sst_customer_bridge_reversal_fix   --    ryzlan.sst_customer_bridge_reversal_fix
+    FROM ryzlan.sst_customer_bridge_reversal_fix --    ryzlan.sst_customer_bridge_reversal_fix
       --    ufdm_archive.sst_customer_bridge_lcoked_07052024_1157
       --    ryzlan.sst_customer_bridge_pp
   ),
@@ -132,56 +128,272 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
     SELECT *,
       CASE
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 1 bridge_movement" = 'Up Sell' then 1
+        AND "n - 1 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 1) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 2 bridge_movement" = 'Up Sell' then 2
+        AND "n - 2 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 2) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 3 bridge_movement" = 'Up Sell' then 3
+        AND "n - 3 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 3) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 4 bridge_movement" = 'Up Sell' then 4
+        AND "n - 4 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 4) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 5 bridge_movement" = 'Up Sell' then 5
+        AND "n - 5 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 5) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 6 bridge_movement" = 'Up Sell' then 6
+        AND "n - 6 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 6) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 7 bridge_movement" = 'Up Sell' then 7
+        AND "n - 7 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 7) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 8 bridge_movement" = 'Up Sell' then 8
+        AND "n - 8 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 8) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 9 bridge_movement" = 'Up Sell' then 9
+        AND "n - 9 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 9) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 10 bridge_movement" = 'Up Sell' then 10
+        AND "n - 10 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 10) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 11 bridge_movement" = 'Up Sell' then 11
+        AND "n - 11 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 11) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 12 bridge_movement" = 'Up Sell' then 12
+        AND "n - 12 bridge_movement" = 'Up Sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 12) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         ELSE 0
       END AS upsell_reversal_flag,
       CASE
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 1 bridge_movement" = 'Cross-sell' then 1
+        AND "n - 1 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 1) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 2 bridge_movement" = 'Cross-sell' then 2
+        AND "n - 2 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 2) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 3 bridge_movement" = 'Cross-sell' then 3
+        AND "n - 3 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 3) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 4 bridge_movement" = 'Cross-sell' then 4
+        AND "n - 4 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 4) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 5 bridge_movement" = 'Cross-sell' then 5
+        AND "n - 5 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 5) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 6 bridge_movement" = 'Cross-sell' then 6
+        AND "n - 6 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 6) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 7 bridge_movement" = 'Cross-sell' then 7
+        AND "n - 7 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 7) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 8 bridge_movement" = 'Cross-sell' then 8
+        AND "n - 8 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 8) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 9 bridge_movement" = 'Cross-sell' then 9
+        AND "n - 9 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 9) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 10 bridge_movement" = 'Cross-sell' then 10
+        AND "n - 10 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 10) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 11 bridge_movement" = 'Cross-sell' then 11
+        AND "n - 11 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 11) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 12 bridge_movement" = 'Cross-sell' then 12
+        AND "n - 12 bridge_movement" = 'Cross-sell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 12) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         ELSE 0
       END AS crosssell_reversal_flag,
       CASE
@@ -190,154 +402,586 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 1 bridge_movement" = 'Churn' then 1
+        AND "n - 1 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 1) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 2 bridge_movement" = 'Churn' then 2
+        AND "n - 2 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 2) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 3 bridge_movement" = 'Churn' then 3
+        AND "n - 3 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 3) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 4 bridge_movement" = 'Churn' then 4
+        AND "n - 4 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 4) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 5 bridge_movement" = 'Churn' then 5
+        AND "n - 5 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 5) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 6 bridge_movement" = 'Churn' then 6
+        AND "n - 6 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 6) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 7 bridge_movement" = 'Churn' then 7
+        AND "n - 7 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 7) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 8 bridge_movement" = 'Churn' then 8
+        AND "n - 8 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 8) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 9 bridge_movement" = 'Churn' then 9
+        AND "n - 9 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 9) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 10 bridge_movement" = 'Churn' then 10
+        AND "n - 10 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 10) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 11 bridge_movement" = 'Churn' then 11
+        AND "n - 11 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 11) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN (
           customer_bridge = 'Winback ST'
           or customer_bridge = 'Winback'
           or customer_bridge = 'Winback LT'
         )
-        AND "n - 12 bridge_movement" = 'Churn' then 12
+        AND "n - 12 bridge_movement" = 'Churn' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 12) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         ELSE 0
       END AS winback_reversal_flag,
       CASE
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 1 bridge_movement" = 'Downgrade' then 1
+        AND "n - 1 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 1) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 2 bridge_movement" = 'Downgrade' then 2
+        AND "n - 2 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 2) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 3 bridge_movement" = 'Downgrade' then 3
+        AND "n - 3 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 3) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 4 bridge_movement" = 'Downgrade' then 4
+        AND "n - 4 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 4) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 5 bridge_movement" = 'Downgrade' then 5
+        AND "n - 5 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 5) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 6 bridge_movement" = 'Downgrade' then 6
+        AND "n - 6 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 6) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 7 bridge_movement" = 'Downgrade' then 7
+        AND "n - 7 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 7) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 8 bridge_movement" = 'Downgrade' then 8
+        AND "n - 8 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 8) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 9 bridge_movement" = 'Downgrade' then 9
+        AND "n - 9 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 9) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 10 bridge_movement" = 'Downgrade' then 10
+        AND "n - 10 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 10) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 11 bridge_movement" = 'Downgrade' then 11
+        AND "n - 11 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 11) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 12 bridge_movement" = 'Downgrade' then 12
+        AND "n - 12 bridge_movement" = 'Downgrade' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 12) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         ELSE 0
       END AS winback_downgrade_flag,
       CASE
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 1 bridge_movement" = 'Downsell' then 1
+        AND "n - 1 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 1) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 2 bridge_movement" = 'Downsell' then 2
+        AND "n - 2 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 2) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 3 bridge_movement" = 'Downsell' then 3
+        AND "n - 3 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 3) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 4 bridge_movement" = 'Downsell' then 4
+        AND "n - 4 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 4) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 5 bridge_movement" = 'Downsell' then 5
+        AND "n - 5 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 5) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 6 bridge_movement" = 'Downsell' then 6
+        AND "n - 6 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 6) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 7 bridge_movement" = 'Downsell' then 7
+        AND "n - 7 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 7) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 8 bridge_movement" = 'Downsell' then 8
+        AND "n - 8 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 8) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 9 bridge_movement" = 'Downsell' then 9
+        AND "n - 9 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 9) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 10 bridge_movement" = 'Downsell' then 10
+        AND "n - 10 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 10) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 11 bridge_movement" = 'Downsell' then 11
+        AND "n - 11 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 11) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 12 bridge_movement" = 'Downsell' then 12
+        AND "n - 12 bridge_movement" = 'Downsell' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 12) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         ELSE 0
       END AS winback_downsell_flag,
       CASE
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 1 bridge_movement" = 'Price Uplift' then 1
+        AND "n - 1 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 1) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 2 bridge_movement" = 'Price Uplift' then 2
+        AND "n - 2 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 2) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 3 bridge_movement" = 'Price Uplift' then 3
+        AND "n - 3 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 3) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 4 bridge_movement" = 'Price Uplift' then 4
+        AND "n - 4 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 4) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 5 bridge_movement" = 'Price Uplift' then 5
+        AND "n - 5 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 5) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 6 bridge_movement" = 'Price Uplift' then 6
+        AND "n - 6 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 6) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 7 bridge_movement" = 'Price Uplift' then 7
+        AND "n - 7 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 7) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 8 bridge_movement" = 'Price Uplift' then 8
+        AND "n - 8 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 8) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 9 bridge_movement" = 'Price Uplift' then 9
+        AND "n - 9 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 9) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 10 bridge_movement" = 'Price Uplift' then 10
+        AND "n - 10 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 10) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 11 bridge_movement" = 'Price Uplift' then 11
+        AND "n - 11 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 11) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 12 bridge_movement" = 'Price Uplift' then 12
+        AND "n - 12 bridge_movement" = 'Price Uplift' then DATE_PART(
+          'Day',
+          (
+            Lag(current_period, 12) OVER(
+              PARTITION BY mcid
+              ORDER BY eval_period,
+                row_num desc
+            )
+          )::TIMESTAMP - current_period::TIMESTAMP
+        ) * -1
         ELSE 0
       END AS cpi_reversal_flag
     FROM base_two
@@ -580,130 +1224,17 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
         ELSE NULL
       END AS winback_downsell_delta_arr_lcu
     FROM base_checker AS a
-  ),
-  day_filter AS (
-    SELECT a.*,
-      DATE_PART(
-        'Day',
-        winback_downsell_end_date::TIMESTAMP - winback_downsell_start_date::TIMESTAMP
-      ) AS winback_downsell_day_diff,
-      DATE_PART(
-        'Day',
-        winback_downgrade_end_date::TIMESTAMP - winback_downgrade_start_date::TIMESTAMP
-      ) AS winback_downgrade_day_diff,
-      DATE_PART(
-        'Day',
-        winback_end_date::TIMESTAMP - winback_start_date::TIMESTAMP
-      ) AS winback_day_diff,
-      DATE_PART(
-        'Day',
-        cpiR_end_date::TIMESTAMP - cpiR_start_date::TIMESTAMP
-      ) AS cpiR_day_diff,
-      DATE_PART(
-        'Day',
-        crossellR_end_date::TIMESTAMP - crossellR_start_date::TIMESTAMP
-      ) AS crossellR_day_diff,
-      DATE_PART(
-        'Day',
-        upsellR_end_date::TIMESTAMP - upsellR_start_date::TIMESTAMP
-      ) AS upsellR_day_diff,
-      CASE
-        WHEN upsell_reversal_flag > 0 THEN ROW_NUMBER () over(
-          PARTITION BY mcid,
-          customer_bridge,
-          upsellr_start_date
-          ORDER BY current_period
-        )
-        ELSE NULL
-      END AS upsell_rnk,
-      CASE
-        WHEN crosssell_reversal_flag > 0 THEN ROW_NUMBER () over(
-          PARTITION BY mcid,
-          customer_bridge,
-          crossellR_start_date
-          ORDER BY current_period
-        )
-        ELSE NULL
-      END AS crosssell_rnk,
-      CASE
-        WHEN cpi_reversal_flag > 0 THEN ROW_NUMBER () over(
-          PARTITION BY mcid,
-          customer_bridge,
-          cpiR_start_date
-          ORDER BY current_period
-        )
-        ELSE NULL
-      END AS cpi_rnk,
-      CASE
-        WHEN winback_reversal_flag > 0 THEN ROW_NUMBER () over(
-          PARTITION BY mcid,
-          customer_bridge,
-          winback_start_date
-          ORDER BY current_period
-        )
-        ELSE NULL
-      END AS winback_rnk,
-      CASE
-        WHEN winback_downgrade_flag > 0 THEN ROW_NUMBER () over(
-          PARTITION BY mcid,
-          customer_bridge,
-          winback_downgrade_start_date
-          ORDER BY current_period
-        )
-        ELSE NULL
-      END AS winback_downgrade_rnk,
-      CASE
-        WHEN winback_downsell_flag > 0 THEN ROW_NUMBER () over(
-          PARTITION BY mcid,
-          customer_bridge,
-          winback_downsell_start_date
-          ORDER BY current_period
-        )
-        ELSE NULL
-      END AS winback_downsell_rnk
-    FROM base_checker_two AS a
   )
   SELECT a.*
-  FROM day_filter AS a
-  WHERE --  mcid = '4e128cce-793a-e811-8124-70106faab5f1' AND 
-    --  mcid IN ( '30f35937-33a5-e811-814d-70106fa55dc1'
-    --  '4e128cce-793a-e811-8124-70106faab5f1' , 'e412863b-fd0a-4234-953b-188bc6f848fe'
-    --  ) AND 
-    (
-      (
-        upsell_reversal_flag > 0
-        AND upsellR_day_diff < 186
-      )
-      OR (
-        crosssell_reversal_flag > 0
-        AND crossellR_day_diff < 186
-      )
-      OR (
-        cpi_reversal_flag > 0
-        AND cpiR_day_diff < 186
-      )
-      OR (
-        winback_reversal_flag > 0
-        AND winback_day_diff < 186
-      )
-      OR (
-        winback_downsell_flag > 0
-        AND winback_downsell_day_diff < 186
-      )
-      OR (
-        winback_downgrade_flag > 0
-        AND winback_downgrade_day_diff < 186
-      )
-    )
-    AND (
-      upsell_rnk = 1
-      OR crosssell_rnk = 1
-      OR cpi_rnk = 1
-      OR winback_rnk = 1
-      OR winback_downgrade_rnk = 1
-      OR winback_downsell_rnk = 1
-    ) --  AND  mcid IN ( '4e128cce-793a-e811-8124-70106faab5f1' , 'e412863b-fd0a-4234-953b-188bc6f848fe')
-    --   AND mcid IN ('f6e7e4fa-2b48-e81a-bcb4-46dfd569d878' , 'f2c843b1-605f-e7b5-71a3-402283550691' , 'fb462315-cce6-e411-9afb-0050568d2da8')
+  FROM base_checker_two AS a
+  WHERE mcid = '6e2dddfc-4f35-837f-6912-ed2b9bc5dab0' (
+      upsell_reversal_flag > 0
+      OR crosssell_reversal_flag > 0
+      OR cpi_reversal_flag > 0
+      OR winback_reversal_flag > 0
+      OR winback_downsell_flag > 0
+      OR winback_downgrade_flag > 0
+    ) --   AND mcid IN ('f6e7e4fa-2b48-e81a-bcb4-46dfd569d878' , 'f2c843b1-605f-e7b5-71a3-402283550691' , 'fb462315-cce6-e411-9afb-0050568d2da8')
 );
 DROP TABLE IF EXISTS ryzlan.sst_ending_arr_tester_reversals;
 CREATE TABLE ryzlan.sst_ending_arr_tester_reversals AS WITH main AS (
@@ -722,8 +1253,7 @@ CREATE TABLE ryzlan.sst_ending_arr_tester_reversals AS WITH main AS (
         base_currency
       )
     ) AS sum_baseline_arr_local_currency
-  FROM ryzlan.sst_reversal_fix_4_1 --  ufdm_archive.sst_lcoked_07052024_1157 --ryzlan.sst_ending_arr_tester_final
-    --  ufdm_archive.sst_lcoked_07052024_1157 --  ryzlan.sst_adhoc
+  FROM ufdm_archive.sst_lcoked_07052024_1157 --  ryzlan.sst_adhoc
 )
 SELECT *,
   arr / CASE
@@ -737,78 +1267,18 @@ SELECT *,
     ELSE sum_baseline_arr_local_currency
   END AS ratio_arr_local_currency,
   '' AS ending_arr_comment
-FROM main --WHERE mcid IN ( '4e128cce-793a-e811-8124-70106faab5f1' , 'e412863b-fd0a-4234-953b-188bc6f848fe')
-;
---SELECT snapshot_date  , mcid , ending_arr_comment  , sum(arr) AS arr    FROM ryzlan.sst_ending_arr_tester_reversals
---WHERE mcid = '4e128cce-793a-e811-8124-70106faab5f1'
---GROUP BY 1 ,2 ,3
---LIMIT 1 
---
---SELECT 
---    snapshot_date , 
---    mcid ,
---    sku ,
---    arr , 
---    ratio_arr , 
---    sum_arr
---FROM  ryzlan.sst_ending_arr_tester_reversals
---WHERE mcid = '4e128cce-793a-e811-8124-70106faab5f1' AND arr <> 0.0 
---
---SELECT 
---*,
---ROW_NUMBER () over(PARTITION BY mcid , customer_bridge ,  upsellr_start_date)  AS rnk  
--- 
---FROM ryzlan.ending_arr_marker 
---
---SELECT 
---    snapshot_date , 
---    m.mcid , 
---    arr , 
---    ratio_arr , 
---    sum_arr ,
-----    upsellR_delta_arr AS ch ,
-----    sum(upsellR_delta_arr) upsellR_delta_arr,
-----    round((sum_arr + sum(upsellR_delta_arr)) * ratio_arr) AS new_Arr 
-----    OVER(PARTITION BY m.snapshot_date , m.mcid , m.arr ) AS  upsellR_delta_arr  
---    
---    round(CAST((sum_arr + a.upsellR_delta_arr) * ratio_arr AS NUMERIC) ,2 ) AS new_arr , 
-----    sum_arr , 
---     round(CAST(sum_arr + a.upsellR_delta_arr AS NUMERIC ) , 2  ) 
---FROM  ryzlan.sst_ending_arr_tester_reversals AS m    
---JOIN    ryzlan.ending_arr_marker AS a
---on m.mcid = a.mcid
---  AND m.snapshot_date >= a.upsellR_start_date
---  AND m.snapshot_date <= a.upsellR_end_date
---  AND a.upsell_reversal_flag > 0  
---  WHERE  rnk = 1 
----- and  m.mcid = '4e128cce-793a-e811-8124-70106faab5f1' 
-----  AND arr <> 0.0 
---GROUP BY 1,2,3,4,5 ,6  
--- Fix Upsell Reversal 
+FROM main;
+-- Fix upsell Reversal 
 UPDATE ryzlan.sst_ending_arr_tester_reversals AS m
-SET arr = round(
-    CAST(
-      (sum_arr + a.upsellR_delta_arr) * ratio_arr AS NUMERIC
-    ),
-    3
-  ),
-  sum_arr = round(
-    CAST(sum_arr + a.upsellR_delta_arr as NUMERIC),
-    3
-  ),
+SET arr = round((sum_arr + a.upsellR_delta_arr) * ratio_arr),
+  sum_arr = round(sum_arr + a.upsellR_delta_arr),
   baseline_arr_local_currency = round(
-    CAST(
-      (
-        sum_baseline_arr_local_currency + a.upsellR_delta_arr_lcu
-      ) * ratio_arr_local_currency AS NUMERIC
-    ),
-    3
+    (
+      sum_baseline_arr_local_currency + a.upsellR_delta_arr_lcu
+    ) * ratio_arr_local_currency
   ),
   sum_baseline_arr_local_currency = round(
-    CAST(
-      sum_baseline_arr_local_currency + a.upsellR_delta_arr_lcu AS NUMERIC
-    ),
-    3
+    sum_baseline_arr_local_currency + a.upsellR_delta_arr_lcu
   ),
   ending_arr_comment = concat(
     ending_arr_comment,
@@ -821,29 +1291,15 @@ WHERE m.mcid = a.mcid
   AND a.upsell_reversal_flag > 0;
 -- Fix cross-sell  Reversal 
 UPDATE ryzlan.sst_ending_arr_tester_reversals AS m
-SET arr = round(
-    CAST(
-      (sum_arr + a.crossellR_delta_arr) * ratio_arr as NUMERIC
-    ),
-    3
-  ),
-  sum_arr = round(
-    CAST(sum_arr + a.crossellR_delta_arr as NUMERIC),
-    3
-  ),
+SET arr = round((sum_arr + a.crossellR_delta_arr) * ratio_arr),
+  sum_arr = round(sum_arr + a.crossellR_delta_arr),
   baseline_arr_local_currency = round(
-    CAST(
-      (
-        sum_baseline_arr_local_currency + a.crossellR_delta_arr_lcu
-      ) * ratio_arr_local_currency AS NUMERIC
-    ),
-    3
+    (
+      sum_baseline_arr_local_currency + a.crossellR_delta_arr_lcu
+    ) * ratio_arr_local_currency
   ),
   sum_baseline_arr_local_currency = round(
-    CAST(
-      sum_baseline_arr_local_currency + a.crossellR_delta_arr_lcu AS NUMERIC
-    ),
-    3
+    sum_baseline_arr_local_currency + a.crossellR_delta_arr_lcu
   ),
   ending_arr_comment = concat(
     ending_arr_comment,
@@ -857,30 +1313,16 @@ WHERE m.mcid = a.mcid
 -- winback downgrade fix
 UPDATE ryzlan.sst_ending_arr_tester_reversals AS m
 SET arr = round(
-    CAST(
-      (sum_arr + a.winback_downgrade_delta_arr) * ratio_arr AS NUMERIC
-    ),
-    3
+    (sum_arr + a.winback_downgrade_delta_arr) * ratio_arr
   ),
-  sum_arr = round(
-    CAST(
-      sum_arr + a.winback_downgrade_delta_arr as NUMERIC
-    ),
-    3
-  ),
+  sum_arr = round(sum_arr + a.winback_downgrade_delta_arr),
   baseline_arr_local_currency = round(
-    CAST(
-      (
-        sum_baseline_arr_local_currency + a.winback_downgrade_delta_arr_lcu
-      ) * ratio_arr_local_currency AS NUMERIC
-    ),
-    3
+    (
+      sum_baseline_arr_local_currency + a.winback_downgrade_delta_arr_lcu
+    ) * ratio_arr_local_currency
   ),
   sum_baseline_arr_local_currency = round(
-    CAST(
-      sum_baseline_arr_local_currency + a.winback_downgrade_delta_arr_lcu AS NUMERIC
-    ),
-    3
+    sum_baseline_arr_local_currency + a.winback_downgrade_delta_arr_lcu
   ),
   ending_arr_comment = concat(
     ending_arr_comment,
@@ -894,30 +1336,16 @@ WHERE m.mcid = a.mcid
 -- winback downsell fix
 UPDATE ryzlan.sst_ending_arr_tester_reversals AS m
 SET arr = round(
-    CAST(
-      (sum_arr + a.winback_downsell_delta_arr) * ratio_arr AS NUMERIC
-    ),
-    3
+    (sum_arr + a.winback_downsell_delta_arr) * ratio_arr
   ),
-  sum_arr = round(
-    CAST(
-      sum_arr + a.winback_downsell_delta_arr as NUMERIC
-    ),
-    3
-  ),
+  sum_arr = round(sum_arr + a.winback_downsell_delta_arr),
   baseline_arr_local_currency = round(
-    CAST(
-      (
-        sum_baseline_arr_local_currency + a.winback_downsell_delta_arr_lcu
-      ) * ratio_arr_local_currency AS NUMERIC
-    ),
-    3
+    (
+      sum_baseline_arr_local_currency + a.winback_downsell_delta_arr_lcu
+    ) * ratio_arr_local_currency
   ),
   sum_baseline_arr_local_currency = round(
-    CAST(
-      sum_baseline_arr_local_currency + a.winback_downsell_delta_arr_lcu AS NUMERIC
-    ),
-    3
+    sum_baseline_arr_local_currency + a.winback_downsell_delta_arr_lcu
   ),
   ending_arr_comment = concat(
     ending_arr_comment,
@@ -930,26 +1358,15 @@ WHERE m.mcid = a.mcid
   AND a.winback_downsell_flag > 0;
 -- Fix CPI Reversal 
 UPDATE ryzlan.sst_ending_arr_tester_reversals AS m
-SET arr = round(
-    CAST(
-      (sum_arr + a.cpiR_delta_arr) * ratio_arr as NUMERIC
-    ),
-    3
-  ),
-  sum_arr = round(CAST(sum_arr + a.cpiR_delta_arr as NUMERIC), 3),
+SET arr = round((sum_arr + a.cpiR_delta_arr) * ratio_arr),
+  sum_arr = round(sum_arr + a.cpiR_delta_arr),
   baseline_arr_local_currency = round(
-    CAST(
-      (
-        sum_baseline_arr_local_currency + a.cpiR_delta_arr_lcu
-      ) * ratio_arr_local_currency AS NUMERIC
-    ),
-    3
+    (
+      sum_baseline_arr_local_currency + a.cpiR_delta_arr_lcu
+    ) * ratio_arr_local_currency
   ),
   sum_baseline_arr_local_currency = round(
-    CAST(
-      sum_baseline_arr_local_currency + a.cpiR_delta_arr_lcu AS NUMERIC
-    ),
-    3
+    sum_baseline_arr_local_currency + a.cpiR_delta_arr_lcu
   ),
   ending_arr_comment = concat(
     ending_arr_comment,

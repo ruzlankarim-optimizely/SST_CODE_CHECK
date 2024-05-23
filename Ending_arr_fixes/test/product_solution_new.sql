@@ -1,4 +1,3 @@
-
 create or replace function ryzlan.sp_populate_sst_product_bridge_product_solution_reversal_fix(var_period text) returns void language plpgsql as $$ BEGIN
 DELETE from ryzlan.sst_product_bridge_product_solution_reversal_fix
 where evaluation_period = var_period;
@@ -96,10 +95,7 @@ SELECT per.evaluation_period,
     (coalesce(cla.current_arr_usd_ccfx::numeric, 0)),
     2
   ) as current_arr_usd_ccfx,
-  round(
-    (coalesce(cla.prior_arr_usd_ccfx::numeric, 0)),
-    2
-  ) as prior_arr_usd_ccfx,
+  round((coalesce(cla.prior_arr_usd_ccfx::numeric, 0)), 2) as prior_arr_usd_ccfx,
   round(
     (
       coalesce(cla.current_arr_usd_ccfx::numeric, 0) - coalesce(cla.prior_arr_usd_ccfx::numeric, 0)
@@ -137,51 +133,353 @@ FROM customer_level_arr_tmp cla
   CROSS JOIN ufdm_grey.periods per
 WHERE 1 = 1
   AND per.evaluation_period = var_period;
+drop table if exists prior_period_customer_arr_tmp;
+drop table if exists current_period_customer_arr_tmp;
+drop table if exists customer_level_arr_tmp;
 --############################################
 --Downgrade
 --############################################
 update arr_product_bridge_tmp
 set product_bridge = 'Downgrade'
 where product_bridge = 'Partial Churn';
---Cross-sell
-WITH PG_F_C AS (
-  SELECT mcid,
-    COUNT(distinct product_bridge) as product_family_count
-  FROM arr_product_bridge_tmp
-  WHERE current_arr_usd_ccfx > 0
-    and evaluation_period = var_period
-  group by mcid,
-    evaluation_period
+--############################
+--cross sell
+--############################
+RAISE NOTICE 'Running crossell update on product solution bridge...';
+drop table if exists temp_pb_crosssell;
+create temp table temp_pb_crosssell as
+select mcid,
+  product_bridge as product_group_bridge,
+  evaluation_period,
+  b."Product Solution" as product_group_solution,
+  sum(product_arr_change_ccfx) as product_group_arr_change_ccfx,
+  sum(product_arr_change_lcu) as product_group_arr_change_lcu
+from sandbox_pd.sst_product_bridge_product_group a
+  join (
+    select distinct "Product Group",
+      "Product Solution"
+    from ufdm_grey.product_hierarchy_mappings
+  ) b on a.current_product_group = b."Product Group"
+where 1 = 1
+  and product_bridge in ('Cross-sell')
+  and evaluation_period = var_period
+group by mcid,
+  product_bridge,
+  evaluation_period,
+  b."Product Solution";
+drop table if exists temp_pb_crosssell_final;
+create temp table temp_pb_crosssell_final as with temp as (
+  select a.product_arr_change_ccfx,
+    a.product_bridge,
+    coalesce(a.current_product_family, a.prior_product_family) as product_solution,
+    b.*,
+    row_number() over (
+      partition by a.mcid,
+      b.product_group_solution
+      order by a.product_arr_change_ccfx desc
+    ) as rnk
+  from arr_product_bridge_tmp a
+    join temp_pb_crosssell b on a.mcid = b.mcid
+    and coalesce(a.current_product_family, a.prior_product_family) = b.product_group_solution
+  where a.product_bridge not in ('Flat', 'Rounding')
+    and a.evaluation_period = var_period
+    and product_arr_change_ccfx > 0
 )
-UPDATE arr_product_bridge_tmp AS t
-SET product_bridge = CASE
-    WHEN pfc.product_family_count > 1 THEN 'Cross-sell'
-    ELSE product_bridge
-  END
-FROM PG_F_C AS pfc
-WHERE t.mcid = pfc.mcid
-  AND t.product_bridge = 'New'
-  and t.evaluation_period = var_period;
--------
---Downsell
-WITH PG_F_C AS (
-  SELECT mcid,
-    COUNT(distinct product_bridge) as product_family_count
-  FROM arr_product_bridge_tmp
-  WHERE prior_arr_usd_ccfx > 0
-    and evaluation_period = var_period
-  group by mcid,
-    evaluation_period
-) --  select * from PG_F_C
-UPDATE arr_product_bridge_tmp AS t
-SET product_bridge = CASE
-    WHEN pfc.product_family_count > 1 THEN 'Downsell'
-    ELSE product_bridge
-  END
-FROM PG_F_C AS pfc
-WHERE t.mcid = pfc.mcid
-  AND t.product_bridge = 'Churn'
-  and t.evaluation_period = var_period;
+select *,
+  case
+    when abs(product_arr_change_ccfx) <= abs(product_group_arr_change_ccfx) then 0
+    else 1
+  end as split_record
+from temp
+where rnk = 1;
+update arr_product_bridge_tmp a
+set product_bridge = 'Cross-sell'
+from temp_pb_crosssell_final b
+where a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and a.product_bridge = b.product_bridge
+  and coalesce(a.current_product_family, a.prior_product_family) = b.product_solution
+  and b.split_record = 0
+  and a.evaluation_period = var_period;
+drop table if exists temp_pb_crosssell_split;
+create temp table temp_pb_crosssell_split as
+select distinct a.evaluation_period,
+  a.prior_period,
+  a.current_period,
+  a.current_master_customer_id,
+  a.prior_master_customer_id,
+  a.mcid,
+  a.baseline_currency,
+  a.prior_arr_usd_ccfx as prior_period_arr_usd_ccfx,
+  a.current_arr_usd_ccfx - b.product_group_arr_change_ccfx as current_period_arr_usd_ccfx,
+  a.product_arr_change_ccfx - b.product_group_arr_change_ccfx as product_arr_change_ccfx,
+  a.prior_arr_lcu as prior_period_arr_lcu,
+  a.current_arr_lcu - b.product_group_arr_change_lcu as current_period_lcu,
+  a.product_arr_change_lcu - b.product_group_arr_change_lcu as product_arr_change_lcu,
+  a.product_bridge
+from arr_product_bridge_tmp a
+  join temp_pb_crosssell_final b on a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and a.product_bridge = b.product_bridge
+  and coalesce(a.current_product_family, a.prior_product_family) = b.product_solution
+where b.Split_record = 1
+  and a.evaluation_period = var_period
+union all
+select distinct a.evaluation_period,
+  a.prior_period,
+  a.current_period,
+  a.current_master_customer_id,
+  a.prior_master_customer_id,
+  a.mcid,
+  a.baseline_currency,
+  '0'::numeric as prior_period_customer_arr_usd_ccfx,
+  b.product_group_arr_change_ccfx as current_period_arr_usd_ccfx,
+  b.product_group_arr_change_ccfx as product_arr_change_ccfx,
+  '0'::numeric as prior_period_arr_lcu,
+  b.product_group_arr_change_lcu as current_period_lcu,
+  b.product_group_arr_change_lcu as product_arr_change_lcu,
+  'Cross-sell' as product_bridge
+from arr_product_bridge_tmp a
+  join temp_pb_crosssell_final b on a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and a.product_bridge = b.product_bridge
+  and coalesce(a.current_product_family, a.prior_product_family) = b.product_solution
+where b.Split_record = 1
+  and a.evaluation_period = var_period
+order by mcid;
+delete from arr_product_bridge_tmp a using temp_pb_crosssell_final b
+where 1 = 1
+  and a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and b.Split_record = 1
+  and a.evaluation_period = var_period
+  and a.product_bridge = b.product_bridge
+  and coalesce(a.current_product_family, a.prior_product_family) = b.product_solution;
+insert into arr_product_bridge_tmp (
+    evaluation_period,
+    prior_period,
+    current_period,
+    current_master_customer_id,
+    prior_master_customer_id,
+    mcid,
+    baseline_currency,
+    prior_arr_usd_ccfx,
+    current_arr_usd_ccfx,
+    product_arr_change_ccfx,
+    prior_arr_lcu,
+    current_arr_lcu,
+    product_arr_change_lcu,
+    product_bridge
+  )
+select evaluation_period,
+  prior_period,
+  current_period,
+  current_master_customer_id,
+  prior_master_customer_id,
+  mcid,
+  baseline_currency,
+  prior_period_arr_usd_ccfx,
+  current_period_arr_usd_ccfx,
+  product_arr_change_ccfx,
+  prior_period_arr_lcu,
+  current_period_lcu,
+  product_arr_change_lcu,
+  product_bridge
+from temp_pb_crosssell_split;
+drop table if exists temp_pb_crosssell;
+drop table if exists temp_pb_crosssell_final;
+drop table if exists temp_pb_crosssell_split;
+--###########################################
+--DOWNSELL
+--###########################################
+RAISE NOTICE 'Running downsell update on product solution bridge...';
+drop table if exists temp_pb_downsell;
+create temp table temp_pb_downsell as
+select mcid,
+  product_bridge as product_group_bridge,
+  evaluation_period,
+  b."Product Solution" as product_group_solution,
+  sum(product_arr_change_ccfx) as product_group_arr_change_ccfx,
+  sum(product_arr_change_lcu) as product_group_arr_change_lcu
+from sandbox_pd.sst_product_bridge_product_group a
+  join (
+    select distinct "Product Group",
+      "Product Solution"
+    from ufdm_grey.product_hierarchy_mappings
+  ) b on a.current_product_group = b."Product Group"
+where 1 = 1
+  and product_bridge in ('Downsell')
+  and evaluation_period = var_period
+group by mcid,
+  product_bridge,
+  evaluation_period,
+  b."Product Solution";
+drop table if exists temp_pb_downsell_final;
+create temp table temp_pb_downsell_final as with temp as (
+  select a.product_arr_change_ccfx,
+    a.product_bridge,
+    coalesce(a.current_product_family, a.prior_product_family) as product_solution,
+    b.*,
+    row_number() over (
+      partition by a.mcid,
+      b.product_group_solution
+      order by a.product_arr_change_ccfx
+    ) as rnk
+  from arr_product_bridge_tmp a
+    join temp_pb_downsell b on a.mcid = b.mcid
+    and coalesce(a.current_product_family, a.prior_product_family) = b.product_group_solution
+  where a.product_bridge not in ('Flat', 'Rounding')
+    and a.evaluation_period = var_period
+    and a.product_arr_change_ccfx < 0
+)
+select *,
+  case
+    when abs(product_arr_change_ccfx) <= abs(product_group_arr_change_ccfx) then 0
+    else 1
+  end as split_record
+from temp
+where rnk = 1;
+update arr_product_bridge_tmp a
+set product_bridge = 'Downsell'
+from temp_pb_downsell_final b
+where a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and a.product_bridge = b.product_bridge
+  and b.split_record = 0
+  and a.evaluation_period = var_period
+  and coalesce(a.current_product_family, a.prior_product_family) = b.product_solution;
+drop table if exists temp_pb_downsell_split;
+create temp table temp_pb_downsell_split as
+select distinct a.evaluation_period,
+  a.prior_period,
+  a.current_period,
+  a.current_master_customer_id,
+  a.prior_master_customer_id,
+  a.mcid,
+  a.baseline_currency,
+  a.prior_arr_usd_ccfx as prior_period_customer_arr_usd_ccfx,
+  a.current_arr_usd_ccfx - b.product_group_arr_change_ccfx as current_period_arr_usd_ccfx,
+  a.product_arr_change_ccfx - b.product_group_arr_change_ccfx as product_arr_change_ccfx,
+  a.prior_arr_lcu as prior_period_arr_lcu,
+  a.current_arr_lcu - b.product_group_arr_change_lcu as current_period_lcu,
+  a.product_arr_change_lcu - b.product_group_arr_change_lcu as product_arr_change_lcu,
+  a.product_bridge
+from arr_product_bridge_tmp a
+  join temp_pb_downsell_final b on a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and a.product_bridge = b.product_bridge
+  and coalesce(a.current_product_family, a.prior_product_family) = b.product_solution
+where b.Split_record = 1
+  and a.evaluation_period = var_period
+union all
+select distinct a.evaluation_period,
+  a.prior_period,
+  a.current_period,
+  a.current_master_customer_id,
+  a.prior_master_customer_id,
+  a.mcid,
+  a.baseline_currency,
+  '0'::numeric as prior_period_customer_arr_usd_ccfx,
+  b.product_group_arr_change_ccfx as current_period_arr_usd_ccfx,
+  b.product_group_arr_change_ccfx as product_arr_change_ccfx,
+  '0'::numeric as prior_period_arr_lcu,
+  b.product_group_arr_change_lcu as current_period_lcu,
+  b.product_group_arr_change_lcu as product_arr_change_lcu,
+  'Downsell' as product_bridge
+from arr_product_bridge_tmp a
+  join temp_pb_downsell_final b on a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and a.product_bridge = b.product_bridge
+  and coalesce(a.current_product_family, a.prior_product_family) = b.product_solution
+where b.Split_record = 1
+  and a.evaluation_period = var_period
+order by mcid;
+delete from arr_product_bridge_tmp a using temp_pb_downsell_final b
+where 1 = 1
+  and a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and b.Split_record = 1
+  and a.evaluation_period = var_period
+  and a.product_bridge = b.product_bridge
+  and coalesce(a.current_product_family, a.prior_product_family) = b.product_solution;
+insert into arr_product_bridge_tmp (
+    evaluation_period,
+    prior_period,
+    current_period,
+    current_master_customer_id,
+    prior_master_customer_id,
+    mcid,
+    baseline_currency,
+    prior_arr_usd_ccfx,
+    current_arr_usd_ccfx,
+    product_arr_change_ccfx,
+    prior_arr_lcu,
+    current_arr_lcu,
+    product_arr_change_lcu,
+    product_bridge
+  )
+select evaluation_period,
+  prior_period,
+  current_period,
+  current_master_customer_id,
+  prior_master_customer_id,
+  mcid,
+  baseline_currency,
+  prior_period_customer_arr_usd_ccfx,
+  current_period_arr_usd_ccfx,
+  product_arr_change_ccfx,
+  prior_period_arr_lcu,
+  current_period_lcu,
+  product_arr_change_lcu,
+  product_bridge
+from temp_pb_downsell_split;
+drop table if exists temp_pb_downsell;
+drop table if exists temp_pb_downsell_final;
+drop table if exists temp_pb_downsell_split;
+/*
+ --Cross-sell
+ WITH PG_F_C AS (
+ SELECT
+ mcid,
+ COUNT(distinct product_bridge)  as product_family_count
+ FROM arr_product_bridge_tmp
+ WHERE current_arr_usd_ccfx > 0 and evaluation_period=var_period
+ group by mcid,evaluation_period
+ )
+ UPDATE arr_product_bridge_tmp AS t
+ SET product_bridge = CASE
+ WHEN pfc.product_family_count >1
+ THEN 'Cross-sell'
+ ELSE product_bridge
+ END
+ FROM PG_F_C AS pfc
+ WHERE t.mcid = pfc.mcid
+ AND t.product_bridge = 'New'
+ and t.evaluation_period=var_period;
+ 
+ -------
+ --Downsell
+ WITH PG_F_C AS (
+ SELECT
+ mcid,
+ COUNT( distinct product_bridge)  as product_family_count
+ FROM arr_product_bridge_tmp
+ WHERE prior_arr_usd_ccfx > 0 and evaluation_period=var_period
+ group by mcid,evaluation_period
+ )
+ --  select * from PG_F_C
+ 
+ UPDATE arr_product_bridge_tmp AS t
+ SET product_bridge = CASE
+ WHEN pfc.product_family_count >1
+ THEN 'Downsell'
+ ELSE product_bridge
+ END
+ FROM PG_F_C AS pfc
+ WHERE t.mcid = pfc.mcid
+ AND t.product_bridge = 'Churn'
+ and t.evaluation_period=var_period;
+ */
 --#############################################
 --CPI
 --#############################################
@@ -497,6 +795,10 @@ select evaluation_period,
   product_bridge --, winback_period_days, wip_flag, price_increase_amount, subsidiary_entity_name, churn_period, customer_bridge
 from temp_product_swap_split
 where product_bridge != 'Flat';
+Drop table if exists temp_product_swap;
+Drop table if exists temp_updates;
+Drop table if exists temp_split;
+Drop table if exists temp_product_swap_split;
 --#############################################
 --WIP/WINBACK
 --#############################################
@@ -509,7 +811,7 @@ select a.current_master_customer_id as mcid,
   a.current_arr_lcu as arr_lcu_at_new,
   baseline_currency
 from arr_product_bridge_tmp a
-where product_bridge in ('New', 'Cross-sell');
+where product_bridge in ('New');
 --get most recent postivie arr for above new product which should have been churned
 drop table if exists arr_churned_products_tmp;
 create temp table arr_churned_products_tmp AS with temp as (
@@ -558,19 +860,19 @@ create temp table arr_churned_products_tmp AS with temp as (
     5
 )
 select *,
-  (
+(
     DATE_PART('year', snapshot_date_at_new::date) - DATE_PART('year', snapshot_date::date)
   ) * 12 + (
     DATE_PART('month', snapshot_date_at_new::date) - DATE_PART('month', snapshot_date::date)
   ) as months_diff,
-  case
+case
     when arr_at_new > arr_at_churn then 'Upsell'
     else case
       when extract(
         day
         from snapshot_date_at_new::timestamp - (snapshot_date + INTERVAL '1 month')::date
-      ) <= 90 then 'Winback ST'
-      else 'Winback LT'
+      ) <= 90 then 'Winback'
+      else 'Winback'
     end
   end as product_bridge_new,
   arr_at_new - arr_at_churn as arr_diff,
@@ -628,7 +930,7 @@ SELECT a.evaluation_period,
   --round(a.current_arr_usd_ccfx::numeric,2) AS current_period_customer_arr_usd_ccfx,
   case
     when b.mcid is not null
-    and a.product_bridge in ('New', 'Cross-sell') then case
+    and a.product_bridge in ('New') then case
       when b.arr_at_new > b.arr_at_churn then b.arr_at_churn
       else b.arr_at_new
     end --round(b.arr_at_churn::numeric,2)
@@ -636,7 +938,7 @@ SELECT a.evaluation_period,
   end as current_period_customer_arr_usd_ccfx,
   case
     when b.mcid is not null
-    and a.product_bridge in ('New', 'Cross-sell') then case
+    and a.product_bridge in ('New') then case
       when b.arr_at_new > b.arr_at_churn then b.arr_at_churn
       else b.arr_at_new
     end
@@ -646,7 +948,7 @@ SELECT a.evaluation_period,
   round(a.prior_arr_lcu::numeric, 2) AS prior_period_product_arr_lcu,
   case
     when b.mcid is not null
-    and a.product_bridge in ('New', 'Cross-sell') then case
+    and a.product_bridge in ('New') then case
       when b.arr_lcu_at_new > b.arr_lcu_at_churn then b.arr_lcu_at_churn
       else b.arr_lcu_at_new
     end --round(b.arr_lcu_at_churn::numeric,2)
@@ -654,7 +956,7 @@ SELECT a.evaluation_period,
   end as current_period_product_arr_lcu,
   case
     when b.mcid is not null
-    and a.product_bridge in ('New', 'Cross-sell') then case
+    and a.product_bridge in ('New') then case
       when b.arr_lcu_at_new > b.arr_lcu_at_churn then b.arr_lcu_at_churn
       else b.arr_lcu_at_new
     end
@@ -662,9 +964,9 @@ SELECT a.evaluation_period,
   end as product_arr_change_lcu,
   case
     when b.mcid is not null
-    and a.product_bridge in ('New', 'Cross-sell') then case
-      when b.days_diff <= 90 then 'Winback ST'
-      else 'Winback LT'
+    and a.product_bridge in ('New') then case
+      when b.days_diff <= 90 then 'Winback'
+      else 'Winback'
     end --b.product_bridge_new --'Winback' --/WIP
     else a.product_bridge
   end as product_bridge,
@@ -713,7 +1015,7 @@ FROM arr_product_bridge_tmp a
   and a.baseline_currency = b.baseline_currency
   and a.current_period = b.snapshot_date_at_new
 where b.arr_at_new > b.arr_at_churn
-  and a.product_bridge in ('New', 'Cross-sell');
+  and a.product_bridge in ('New');
 --     RAISE NOTICE 'Running customer bridge update on sst product solution bridge...';
 --
 --     --update customer bridge and subsidiary entity
@@ -725,6 +1027,8 @@ where b.arr_at_new > b.arr_at_churn
 --       and a.mcid =b.mcid
 --       and a.evaluation_period = var_period
 --     ;
+drop table if exists arr_new_products_tmp;
+drop table if exists arr_churned_products_tmp;
 RAISE NOTICE 'Running subsidiary entity name insert on sst product solution bridge...';
 drop table if exists sub_entity_tmp;
 create temp table sub_entity_tmp as --update subsidiary_entity_name
@@ -771,6 +1075,8 @@ set subsidiary_entity_name = b.subsidiary_entity_name
 from sub_entity_tmp b
 where a.mcid = b.mcid
   and a.evaluation_period = var_period;
+drop table if exists sub_entity_tmp;
+drop table if exists arr_product_bridge_tmp;
 --###########################################
 --WINBACK Downgrade
 --###########################################
@@ -938,7 +1244,7 @@ downgrade_downsell_total as (
         else 0
       end
     ) as Downsell_arr_lcu,
-    case
+case
       when count(distinct a.product_bridge) > 1 then 1
       else 0
     end as Downgrade_Downsell_both_exists
@@ -1338,12 +1644,16 @@ select evaluation_period,
   churn_period,
   customer_bridge
 from temp_windowngrade_split;
+drop table if exists temp_win_downgrade_upsell;
+drop table if exists temp_windowngrade_final;
+drop table if exists temp_windowngrade_final_curated;
+drop table if exists temp_windowngrade_split;
 --###########################################
 --CPI Reversal
 --###########################################
 RAISE NOTICE 'Running CPI Reversal update on sst product solution bridge...';
 drop table if exists temp_CPI_Rev_pg;
-create table temp_CPI_Rev_pg as with temp1 as (
+create temp table temp_CPI_Rev_pg as with temp1 as (
   select a.mcid,
     a.product_bridge,
     a.evaluation_period as evaluation_period_at_Downgrade_Churn,
@@ -1392,7 +1702,7 @@ select *
 from temp2;
 RAISE NOTICE 'Running CPI Reversal update on sst product solution bridge 1.1 ...';
 drop table if exists temp_CPI_Reversal;
-create table temp_CPI_Reversal as with temp1 as (
+create temp table temp_CPI_Reversal as with temp1 as (
   select *,
     row_number() over (
       partition by mcid,
@@ -1487,21 +1797,21 @@ select distinct a.evaluation_period,
   a.current_product_solution,
   a.prior_product_solution,
   a.currency_code,
-  case
+case
     when a.product_bridge = 'Churn' then a.prior_period_product_arr_usd_ccfx - (c.product_arr_change_ccfx - b.cpi_reversal_arr)
     else a.prior_period_product_arr_usd_ccfx
   end as prior_period_product_arr_usd_ccfx,
-  case
+case
     when a.product_bridge = 'Churn' then 0
     else a.current_period_product_arr_usd_ccfx + (c.product_arr_change_ccfx - b.cpi_reversal_arr)
   end as current_period_product_arr_usd_ccfx,
   a.product_arr_change_ccfx + (c.product_arr_change_ccfx - b.cpi_reversal_arr) as product_arr_change_ccfx ---lcu
 ,
-  case
+case
     when a.product_bridge = 'Churn' then a.prior_period_product_arr_lcu - (c.product_arr_change_lcu - b.cpi_reversal_lcu)
     else a.prior_period_product_arr_lcu
   end as prior_period_product_arr_lcu,
-  case
+case
     when a.product_bridge = 'Churn' then 0
     else a.current_period_product_arr_lcu + (c.product_arr_change_lcu - b.cpi_reversal_lcu)
   end as current_period_product_arr_lcu,
@@ -1635,6 +1945,10 @@ select evaluation_period,
   churn_period,
   customer_bridge
 from temp_cpireversal_split;
+drop table if exists temp_CPI_Rev_pg;
+drop table if exists temp_CPI_Reversal;
+drop table if exists temp_cpireversal_final;
+drop table if exists temp_cpireversal_split;
 --###########################################
 --Upsell Reversal
 --###########################################
@@ -1746,21 +2060,21 @@ select distinct a.evaluation_period,
   a.current_product_solution,
   a.prior_product_solution,
   a.currency_code,
-  case
+case
     when a.product_bridge = 'Churn' then a.prior_period_product_arr_usd_ccfx - c.product_arr_change_ccfx
     else a.prior_period_product_arr_usd_ccfx
   end as prior_period_product_arr_usd_ccfx,
-  case
+case
     when a.product_bridge = 'Churn' then 0
     else a.current_period_product_arr_usd_ccfx + c.product_arr_change_ccfx
   end as current_period_product_arr_usd_ccfx,
   a.product_arr_change_ccfx + c.product_arr_change_ccfx as product_arr_change_ccfx ---lcu
 ,
-  case
+case
     when a.product_bridge = 'Churn' then a.prior_period_product_arr_lcu - c.product_arr_change_lcu
     else a.prior_period_product_arr_lcu
   end as prior_period_product_arr_lcu,
-  case
+case
     when a.product_bridge = 'Churn' then 0
     else a.current_period_product_arr_lcu + c.product_arr_change_lcu
   end as current_period_product_arr_lcu,
@@ -1879,6 +2193,9 @@ select evaluation_period,
   churn_period,
   customer_bridge
 from temp_upselldowngrade_split;
+drop table if exists temp_downgrade_upsell;
+drop table if exists temp_upselldowngrade_final;
+drop table if exists temp_upselldowngrade_split;
 --#############################################
 --Price Ramps
 --#############################################
@@ -2032,6 +2349,8 @@ select evaluation_period,
   product_arr_change_lcu,
   product_bridge
 from temp_Price_Ramp_split;
+drop table if exists temp_product_bridge_price_ramps;
+drop table if exists temp_Price_Ramp_split;
 RAISE NOTICE 'Running rounding errors update on sst product solution group...';
 --rounding errors updates
 update ryzlan.sst_product_bridge_product_solution_reversal_fix

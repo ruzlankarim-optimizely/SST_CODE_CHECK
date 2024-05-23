@@ -227,9 +227,9 @@ select b.current_period as snapshot_date,
   subsidiary_entity_name,
   replace(product_bridge, 'N/A', 'Flat') as "Bridge_Account",
   'Account Name Product Group Bridge' as "Type",
-  pathways,
+  -- pathways,
   product_arr_change_ccfx
-from sandbox.sst_product_group_bridge_ending_arr_fix a
+from ryzlan.sst_product_group_bridge_reversal_fix a
   join ufdm_grey.periods b on a.evaluation_period = b.evaluation_period
 where 1 = 1 --and a.product_bridge not in ('Flat','N/A')
   and product_arr_change_ccfx <> 0 --and mcid is not null and mcid <> ''
@@ -269,9 +269,9 @@ select b.current_period as snapshot_date,
   subsidiary_entity_name,
   replace(product_bridge, 'N/A', 'Flat') as "Bridge_Account",
   'Account Name Solution Bridge' as "Type",
-  pathways,
+  -- pathways,
   product_arr_change_ccfx --select distinct evaluation_period
-from sandbox.sst_product_solution_bridge_ending_arr_fix a
+from ryzlan.sst_product_bridge_product_solution_reversal_fix a
   join ufdm_grey.periods b on a.evaluation_period = b.evaluation_period
 where 1 = 1 --and a.product_bridge not in ('Flat','N/A')
   and product_arr_change_ccfx <> 0 --and mcid is not null and mcid <> ''
@@ -300,10 +300,10 @@ select b.current_period as snapshot_date,
   subsidiary_entity_name,
   customer_bridge as "Bridge_Account",
   'Account Name Customer Bridge' as "Type",
-  pathways,
+  -- pathways,
   a.customer_arr_change_ccfx --,a.evaluation_period
   --select *
-from sandbox.sst_customer_bridge_cm_ending_arr_fix a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join ufdm_grey.periods b on a.evaluation_period = b.evaluation_period
 where 1 = 1 --and a.customer_bridge not in ('Flat','N/A')
   and customer_arr_change_ccfx <> 0
@@ -322,7 +322,7 @@ temp_pb as (
     b.snapshot_date,
     coalesce(a.current_product_group, a.prior_product_group) as sku,
     sum(coalesce(a.product_arr_change_ccfx, 0)) as product_arr_change_ccfx --select *
-  from sandbox.sst_product_group_bridge_ending_arr_fix a
+  from ryzlan.sst_product_group_bridge_reversal_fix a
     join ufdm_grey.periods p on a.evaluation_period = p.evaluation_period
     join temp_cb b on a.mcid = b.master_customer_id
     and p.current_period = b.snapshot_date

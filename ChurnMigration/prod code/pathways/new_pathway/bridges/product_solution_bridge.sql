@@ -1,17 +1,23 @@
-ALTER TABLE sandbox.sst_product_group_bridge
+-- New script in dw-prod-rds-master.cr9dekxonyuj.us-east-1.rds.amaz.
+-- Date: May 1, 2024
+-- Time: 1:39:24 AM
+ALTER TABLE sandbox.sst_product_solution_bridge
 ADD pathways VARCHAR(255);
-ALTER TABLE sandbox.sst_product_group_bridge
+ALTER TABLE sandbox.sst_product_solution_bridge
 ADD unique_id VARCHAR(255);
-DROP TABLE IF EXISTS sandbox.sst_product_group_bridge;
-CREATE TABLE sandbox.sst_product_group_bridge AS
 SELECT *,
   NULL AS pathways,
   NULL AS unique_id
-FROM ufdm.sst_product_bridge_product_group;
+FROM ufdm.sst_product_bridge_product_solution
+LIMIT 10 DROP TABLE IF EXISTS sandbox.sst_product_solution_bridge;
+CREATE TABLE sandbox.sst_product_solution_bridge AS
+SELECT *,
+  NULL AS pathways
+FROM ufdm.sst_product_bridge_product_solution;
 SELECT *
-FROM sandbox.sst_product_group_bridge
+FROM sandbox.sst_product_solution_bridge
 LIMIT 10;
-TRUNCATE TABLE sandbox.sst_product_group_bridge;
+TRUNCATE TABLE sandbox.sst_product_solution_bridge;
 --#############################################
 --CHURN MIGRATION
 --#############################################
@@ -36,15 +42,15 @@ CREATE temp table churn_migration_classifiers_pg as (
       rt.product_arr_change_lcu as pg_arr_change_lcu,
       rt.product_bridge as pg_bridge
     FROM sandbox.churn_migration_classifiers it3
-      left join sandbox.sst_product_group_bridge rt -- replace with product group bridge
+      left join sandbox.sst_product_solution_bridge rt -- replace with product group bridge
       -- Here 
       on it3.evaluation_period = rt.evaluation_period
       and COALESCE (
-        it3.prior_product_group,
-        it3.current_product_group
+        it3.prior_product_solution,
+        it3.current_product_solution
       ) = COALESCE (
-        rt.prior_product_group,
-        rt.current_product_group
+        rt.prior_product_solution,
+        rt.current_product_solution
       )
       and it3.mcid = rt.mcid
       and it3.currency_code = rt.currency_code --      AND it3.product_arr_change_ccfx <> 0 
@@ -57,11 +63,11 @@ CREATE temp table churn_migration_classifiers_pg as (
         'Downsell',
         'Price Uplift',
         'Downgrade'
-      ) --      AND it3.mcid = 'bbeaf423-e118-e211-83c1-0050568d002c'
+      ) --            AND it3.mcid =  'e979e503-d1a1-ea11-a812-000d3abb4345'  AND it3.evaluation_period  =  '2020M05'
       --         'f677c904-1faa-db11-8952-0018717a8c82'
       --         
       --      AND it3.evaluation_period = var_period   
-  ) --  SELECT 
+  ) --    SELECT * FROM initial_table_4 WHERE "Movement Classification" IS NOT NULL 
 ,
   initial_table_5 as (
     select *,
@@ -85,10 +91,10 @@ CREATE temp table churn_migration_classifiers_pg as (
           partition by mcid,
           evaluation_period,
           currency_code,
-          prior_product_group,
-          current_product_group,
+          prior_product_solution,
+          current_product_solution,
           prior_product_family_class,
-          current_product_family_class --          COALESCE (prior_product_group , current_product_group) 
+          current_product_family_class --          COALESCE (prior_product_solution , current_product_solution) 
           --          ,COALESCE (prior_product_family_class,current_product_family_class)
         )
         when "Movement Type-PG" = '+'
@@ -98,10 +104,10 @@ CREATE temp table churn_migration_classifiers_pg as (
           partition by mcid,
           evaluation_period,
           currency_code,
-          prior_product_group,
-          current_product_group,
+          prior_product_solution,
+          current_product_solution,
           prior_product_family_class,
-          current_product_family_class --          COALESCE (prior_product_group ,current_product_group) 
+          current_product_family_class --          COALESCE (prior_product_solution ,current_product_solution) 
           --          ,COALESCE (prior_product_family_class,current_product_family_class)
         )
         else null
@@ -186,36 +192,32 @@ CREATE temp table churn_migration_classifiers_pg as (
         AND pg_bridge <> 'Flat'
         AND pg_bridge <> 'Price Uplift'
         AND pg_bridge <> 'New'
-        AND pg_bridge <> 'Churn'
-        THEN
-        --  THEN case
+        AND pg_bridge <> 'Churn' THEN --  THEN case
         --   when pg_bridge = 'New'
         --   or pg_bridge = 'Churn' then "Movement Classification"
         --   else 
         concat(
-            pg_bridge,
-            ' - ',
-            split_part("Movement Classification", ' - ', 2)
-          )
-        -- end
+          pg_bridge,
+          ' - ',
+          split_part("Movement Classification", ' - ', 2)
+        )
+        end
         else null
       end as "PG Migration: Classification",
       case
         when "PG Leftover: Rolled Up Amount" is not null
         AND pg_bridge <> 'Flat'
-        AND pg_bridge <> 'Price Uplift'
-        AND pg_bridge <> 'New'
-        AND pg_bridge <> 'Churn' then pg_bridge
+        AND pg_bridge <> 'Price Uplift' then pg_bridge
         else null
       end as "PG Leftover: Classification"
     from initial_table_8
   ),
   adding_classification AS (
-  SELECT *,
-    split_part("PG Migration: Classification", ' -- ', 1) bridge_part,
-    split_part("PG Migration: Classification", ' -- ', 2) pathways_part
-  FROM initial_table_9
-),
+    SELECT *,
+      split_part("PG Migration: Classification", ' -- ', 1) bridge_part,
+      split_part("PG Migration: Classification", ' -- ', 2) pathways_part
+    FROM initial_table_9
+  ),
   double_classification_fix AS (
     select *,
       sum("PG Migration: Rolled Up Amount") over(
@@ -238,42 +240,42 @@ CREATE temp table churn_migration_classifiers_pg as (
         pg_arr_change
       ) AS count_migrations
     from adding_classification
-  ),
+  ), --    SELECT * FROM double_classification_fix WHERE "PG Migration: Classification" IS NOT NUL
   double_classification_marker AS (
     SELECT *,
       CASE
         WHEN "PG Leftover: Classification" IS NOT NULL
         AND count_migrations > 1
         AND total_migration_amount_ccfx < pg_arr_change THEN round(
-        (pg_arr_change - total_migration_amount_ccfx) / count_migrations
-      )
-      ELSE NULL
+          (pg_arr_change - total_migration_amount_ccfx) / count_migrations
+        )
+        ELSE NULL
       END AS new_leftover_value_ccfx,
       CASE
         WHEN "PG Leftover: Classification" IS NOT NULL
         AND count_migrations > 1
         AND total_migration_amount_ccfx < pg_arr_change THEN round(
-  (pg_arr_change_lcu - total_migration_amount_lcu) / count_migrations
-)
-ELSE NULL
+          (pg_arr_change_lcu - total_migration_amount_lcu) / count_migrations
+        )
+        ELSE NULL
       END AS new_leftover_value_lcu,
       CASE
         WHEN count_migrations > 1
         AND total_migration_amount_ccfx > pg_arr_change THEN round(
-  (total_migration_amount_ccfx - pg_arr_change) *(
-    "PG Migration: Rolled Up Amount" / total_migration_amount_ccfx
-  )
-)
-ELSE NULL
+          (total_migration_amount_ccfx - pg_arr_change) *(
+            "PG Migration: Rolled Up Amount" / total_migration_amount_ccfx
+          )
+        )
+        ELSE NULL
       END AS subtracted_amount_ccfx,
       CASE
         WHEN count_migrations > 1
         AND total_migration_amount_ccfx > pg_arr_change THEN round(
-  (total_migration_amount_lcu - pg_arr_change_lcu) *(
-    "PG Migration: Rolled Up Amount LCU" / total_migration_amount_lcu
-  )
-)
-ELSE NULL
+          (total_migration_amount_lcu - pg_arr_change_lcu) *(
+            "PG Migration: Rolled Up Amount LCU" / total_migration_amount_lcu
+          )
+        )
+        ELSE NULL
       END AS subtracted_amount_lcu,
       CASE
         WHEN "PG Leftover: Classification" IS NOT NULL
@@ -293,7 +295,9 @@ ELSE NULL
         ELSE FALSE
       END AS double_migration_third_case
     FROM double_classification_fix
-  ) --  SELECT * FROM double_classification_marker    
+  ) --    SELECT 
+  --    *
+  --    FROM double_classification_marker    
   SELECT evaluation_period,
     prior_period,
     current_period,
@@ -302,8 +306,8 @@ ELSE NULL
     mcid,
     current_master_customer_id,
     prior_master_customer_id,
-    current_product_solution,
-    prior_product_solution,
+    current_product_group,
+    prior_product_group,
     currency_code,
     prior_period_product_arr_usd_ccfx,
     current_period_product_arr_usd_ccfx,
@@ -312,8 +316,8 @@ ELSE NULL
     current_period_product_arr_lcu,
     product_arr_change_lcu,
     product_bridge,
-    prior_product_group,
-    current_product_group,
+    prior_product_solution,
+    current_product_solution,
     current_product_family_class,
     prior_product_family_class,
     "Downgraded a Licenses  Product in Current Date",
@@ -392,8 +396,8 @@ CREATE TABLE sandbox.churn_migration_test_pg AS
 SELECT DISTINCT mcid,
   evaluation_period,
   currency_code,
-  current_product_group,
-  prior_product_group,
+  current_product_solution,
+  prior_product_solution,
   pg_bridge,
   "PG Migration: Classification",
   "PG Leftover: Classification",
@@ -420,14 +424,17 @@ SELECT a.*,
   "PG Leftover: Rolled Up Amount LCU",
   pg_bridge,
   "PG Migration: Classification"
-FROM sandbox.sst_product_group_bridge AS a
+FROM sandbox.sst_product_solution_bridge AS a
   JOIN sandbox.churn_migration_test_pg AS b ON a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
   AND COALESCE (
-    a.prior_product_group,
-    a.current_product_group
-  ) = COALESCE(b.prior_product_group, b.current_product_group) --  AND a.prior_product_family = b.prior_product_group
+    a.prior_product_solution,
+    a.current_product_solution
+  ) = COALESCE(
+    b.prior_product_solution,
+    b.current_product_solution
+  ) --  AND a.prior_product_family = b.prior_product_solution
   AND a.product_bridge = b.pg_bridge
 WHERE lower("PG Migration: Classification") ILIKE ('%migration%')
   AND "PG Leftover: Rolled Up Amount" IS NULL;
@@ -441,33 +448,36 @@ SELECT a.*,
   "PG Leftover: Rolled Up Amount LCU",
   "PG Migration: Classification",
   "PG Leftover: Classification"
-FROM sandbox.sst_product_group_bridge AS a
+FROM sandbox.sst_product_solution_bridge AS a
   JOIN sandbox.churn_migration_test_pg AS b ON a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
   AND COALESCE (
-    a.prior_product_group,
-    a.current_product_group
-  ) = COALESCE(b.prior_product_group, b.current_product_group) --  AND a.prior_product_family = b.prior_product_group
+    a.prior_product_solution,
+    a.current_product_solution
+  ) = COALESCE(
+    b.prior_product_solution,
+    b.current_product_solution
+  ) --  AND a.prior_product_family = b.prior_product_solution
   AND a.product_bridge = b.pg_bridge --AND round(a.product_arr_change_ccfx)  = round(b.pg_arr_change) 
 WHERE "PG Migration: Classification" ILIKE ('%migration%')
   AND "PG Leftover: Rolled Up Amount" IS NOT NULL;
 --
-DELETE FROM sandbox.sst_product_group_bridge AS a USING sandbox.PG_migration_default AS b
+DELETE FROM sandbox.sst_product_solution_bridge AS a USING sandbox.PG_migration_default AS b
 WHERE a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
   AND COALESCE (
-    a.prior_product_group,
-    a.current_product_group
+    a.prior_product_solution,
+    a.current_product_solution
   ) = COALESCE(
-    b.prior_product_group,
-    b.current_product_group
+    b.prior_product_solution,
+    b.current_product_solution
   )
   AND a.product_bridge = b.product_bridge;
 --
 --  SELECT * FROM sandbox.PG_migration_default
-INSERT INTO sandbox.sst_product_group_bridge AS a (
+INSERT INTO sandbox.sst_product_solution_bridge AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -476,8 +486,8 @@ INSERT INTO sandbox.sst_product_group_bridge AS a (
     mcid,
     current_master_customer_id,
     prior_master_customer_id,
-    current_product_group,
-    prior_product_group,
+    current_product_solution,
+    prior_product_solution,
     currency_code,
     prior_period_product_arr_usd_ccfx,
     current_period_product_arr_usd_ccfx,
@@ -492,7 +502,6 @@ INSERT INTO sandbox.sst_product_group_bridge AS a (
     subsidiary_entity_name,
     churn_period,
     customer_bridge,
-    unique_id,
     pathways
   )
 SELECT evaluation_period,
@@ -503,8 +512,8 @@ SELECT evaluation_period,
   mcid,
   current_master_customer_id,
   prior_master_customer_id,
-  current_product_group,
-  prior_product_group,
+  current_product_solution,
+  prior_product_solution,
   currency_code,
   prior_period_product_arr_usd_ccfx * abs(
     "PG Migration: Rolled Up Amount" / product_arr_change_ccfx
@@ -528,37 +537,36 @@ SELECT evaluation_period,
   subsidiary_entity_name,
   churn_period,
   customer_bridge,
-  unique_id,
   null as pathways
 FROM sandbox.PG_migration_default AS b
 WHERE mcid = b.mcid
   AND evaluation_period = b.evaluation_period
   AND currency_code = b.currency_code
   AND COALESCE (
-    prior_product_group,
-    current_product_group
+    prior_product_solution,
+    current_product_solution
   ) = COALESCE(
-    b.prior_product_group,
-    b.current_product_group
+    b.prior_product_solution,
+    b.current_product_solution
   )
   AND product_bridge = b.product_bridge;
 --
 --
-DELETE FROM sandbox.sst_product_group_bridge AS a USING sandbox.PG_migration_split AS b
+DELETE FROM sandbox.sst_product_solution_bridge AS a USING sandbox.PG_migration_split AS b
 WHERE a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
   AND COALESCE (
-    a.prior_product_group,
-    a.current_product_group
+    a.prior_product_solution,
+    a.current_product_solution
   ) = COALESCE(
-    b.prior_product_group,
-    b.current_product_group
+    b.prior_product_solution,
+    b.current_product_solution
   )
   AND a.product_bridge = b.product_bridge;
 --
 --
-INSERT INTO sandbox.sst_product_group_bridge AS a (
+INSERT INTO sandbox.sst_product_solution_bridge AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -567,8 +575,8 @@ INSERT INTO sandbox.sst_product_group_bridge AS a (
     mcid,
     current_master_customer_id,
     prior_master_customer_id,
-    current_product_group,
-    prior_product_group,
+    current_product_solution,
+    prior_product_solution,
     currency_code,
     prior_period_product_arr_usd_ccfx,
     current_period_product_arr_usd_ccfx,
@@ -583,7 +591,6 @@ INSERT INTO sandbox.sst_product_group_bridge AS a (
     subsidiary_entity_name,
     churn_period,
     customer_bridge,
-    unique_id,
     pathways
   )
 SELECT evaluation_period,
@@ -594,8 +601,8 @@ SELECT evaluation_period,
   mcid,
   current_master_customer_id,
   prior_master_customer_id,
-  current_product_group,
-  prior_product_group,
+  current_product_solution,
+  prior_product_solution,
   currency_code,
   prior_period_product_arr_usd_ccfx * abs(
     "PG Migration: Rolled Up Amount" / product_arr_change_ccfx
@@ -620,21 +627,20 @@ SELECT evaluation_period,
   subsidiary_entity_name,
   churn_period,
   customer_bridge,
-  unique_id,
   null as pathways
 FROM sandbox.PG_migration_split AS b
 WHERE mcid = b.mcid
   AND evaluation_period = b.evaluation_period
   AND currency_code = b.currency_code
   AND COALESCE (
-    prior_product_group,
-    current_product_group
+    prior_product_solution,
+    current_product_solution
   ) = COALESCE(
-    b.prior_product_group,
-    b.current_product_group
+    b.prior_product_solution,
+    b.current_product_solution
   )
   AND product_bridge = b.product_bridge;
-INSERT INTO sandbox.sst_product_group_bridge AS a (
+INSERT INTO sandbox.sst_product_solution_bridge AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -643,8 +649,8 @@ INSERT INTO sandbox.sst_product_group_bridge AS a (
     mcid,
     current_master_customer_id,
     prior_master_customer_id,
-    current_product_group,
-    prior_product_group,
+    current_product_solution,
+    prior_product_solution,
     currency_code,
     prior_period_product_arr_usd_ccfx,
     current_period_product_arr_usd_ccfx,
@@ -659,7 +665,6 @@ INSERT INTO sandbox.sst_product_group_bridge AS a (
     subsidiary_entity_name,
     churn_period,
     customer_bridge,
-    unique_id,
     pathways
   )
 SELECT evaluation_period,
@@ -670,8 +675,8 @@ SELECT evaluation_period,
   mcid,
   current_master_customer_id,
   prior_master_customer_id,
-  current_product_group,
-  prior_product_group,
+  current_product_solution,
+  prior_product_solution,
   currency_code,
   prior_period_product_arr_usd_ccfx * abs(
     "PG Leftover: Rolled Up Amount" / product_arr_change_ccfx
@@ -698,24 +703,23 @@ SELECT evaluation_period,
   subsidiary_entity_name,
   churn_period,
   customer_bridge,
-  unique_id,
   null as pathways
 FROM sandbox.PG_migration_split AS b
 WHERE mcid = b.mcid
   AND evaluation_period = b.evaluation_period
   AND currency_code = b.currency_code
   AND COALESCE (
-    prior_product_group,
-    current_product_group
+    prior_product_solution,
+    current_product_solution
   ) = COALESCE(
-    b.prior_product_group,
-    b.current_product_group
+    b.prior_product_solution,
+    b.current_product_solution
   )
   AND product_bridge = b.product_bridge;
 --
 --
 --
-UPDATE sandbox.sst_product_group_bridge AS a
+UPDATE sandbox.sst_product_solution_bridge AS a
 SET product_bridge = split_part(product_bridge, ' -- ', 1),
   pathways = split_part(product_bridge, ' -- ', 2)
 WHERE product_bridge ILIKE '%migration --%';
@@ -729,8 +733,8 @@ SELECT evaluation_period,
   mcid,
   current_master_customer_id,
   prior_master_customer_id,
-  current_product_group,
-  prior_product_group,
+  current_product_solution,
+  prior_product_solution,
   currency_code,
   product_bridge,
   winback_period_days,
@@ -739,7 +743,6 @@ SELECT evaluation_period,
   subsidiary_entity_name,
   churn_period,
   customer_bridge,
-  unique_id,
   pathways,
   sum(current_period_product_arr_usd_ccfx) AS current_period_product_arr_usd_ccfx,
   sum(prior_period_product_arr_usd_ccfx) AS prior_period_product_arr_usd_ccfx,
@@ -747,7 +750,7 @@ SELECT evaluation_period,
   sum(current_period_product_arr_lcu) AS current_period_product_arr_lcu,
   sum(prior_period_product_arr_lcu) AS prior_period_product_arr_lcu,
   sum(product_arr_change_lcu) AS product_arr_change_lcu
-FROM sandbox.sst_product_group_bridge
+FROM sandbox.sst_product_solution_bridge
 GROUP BY 1,
   2,
   3,
@@ -766,10 +769,9 @@ GROUP BY 1,
   16,
   17,
   18,
-  19,
-  20;
-TRUNCATE TABLE sandbox.sst_product_group_bridge;
-INSERT INTO sandbox.sst_product_group_bridge(
+  19;
+TRUNCATE TABLE sandbox.sst_product_solution_bridge;
+INSERT INTO sandbox.sst_product_solution_bridge(
     evaluation_period,
     prior_period,
     current_period,
@@ -778,8 +780,8 @@ INSERT INTO sandbox.sst_product_group_bridge(
     mcid,
     current_master_customer_id,
     prior_master_customer_id,
-    current_product_group,
-    prior_product_group,
+    current_product_solution,
+    prior_product_solution,
     currency_code,
     prior_period_product_arr_usd_ccfx,
     current_period_product_arr_usd_ccfx,
@@ -794,7 +796,6 @@ INSERT INTO sandbox.sst_product_group_bridge(
     subsidiary_entity_name,
     churn_period,
     customer_bridge,
-    unique_id,
     pathways
   )
 select evaluation_period,
@@ -805,8 +806,8 @@ select evaluation_period,
   mcid,
   current_master_customer_id,
   prior_master_customer_id,
-  current_product_group,
-  prior_product_group,
+  current_product_solution,
+  prior_product_solution,
   currency_code,
   prior_period_product_arr_usd_ccfx,
   current_period_product_arr_usd_ccfx,
@@ -821,6 +822,5 @@ select evaluation_period,
   subsidiary_entity_name,
   churn_period,
   customer_bridge,
-  unique_id,
   pathways
 FROM sandbox.temp_arr_table;

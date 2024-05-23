@@ -136,6 +136,9 @@ FROM customer_level_arr_tmp cla
   CROSS JOIN ufdm_grey.periods per
 WHERE 1 = 1
   AND per.evaluation_period = var_period;
+drop table if exists prior_period_customer_arr;
+drop table if exists current_period_customer_arr;
+drop table if exists customer_level_arr_tmp;
 --######################################################################
 --Downgrade
 --######################################################################
@@ -474,7 +477,7 @@ insert into arr_product_bridge_tmp (
     prior_arr_lcu,
     current_arr_lcu,
     product_arr_change_lcu,
-    product_bridge --, winback_period_days, wip_flag, price_increase_amount, subsidiary_entity_name, churn_period, customer_bridge
+    product_bridge
   )
 select evaluation_period,
   prior_period,
@@ -493,9 +496,13 @@ select evaluation_period,
   prior_period_product_arr_lcu,
   current_period_product_arr_lcu,
   product_arr_change_lcu,
-  product_bridge --, winback_period_days, wip_flag, price_increase_amount, subsidiary_entity_name, churn_period, customer_bridge
+  product_bridge
 from temp_product_swap_split
 where product_bridge != 'Flat';
+Drop table if exists temp_product_swap;
+Drop table if exists temp_updates;
+Drop table if exists temp_split;
+drop table if exists temp_product_swap_split;
 --#############################################
 --WIP/WINBACK
 --#############################################
@@ -568,8 +575,8 @@ select *,
       when extract(
         day
         from snapshot_date_at_new::timestamp - (snapshot_date + INTERVAL '1 month')::date
-      ) <= 90 then 'Winback ST'
-      else 'Winback LT'
+      ) <= 90 then 'Winback'
+      else 'Winback'
     end
   end as product_bridge_new,
   arr_at_new - arr_at_churn as arr_diff,
@@ -662,8 +669,8 @@ SELECT a.evaluation_period,
   case
     when b.mcid is not null
     and a.product_bridge in ('New', 'Cross-sell') then case
-      when b.days_diff <= 90 then 'Winback ST'
-      else 'Winback LT'
+      when b.days_diff <= 90 then 'Winback'
+      else 'Winback'
     end --b.product_bridge_new --'Winback' --/WIP
     else a.product_bridge
   end as product_bridge,
@@ -713,6 +720,8 @@ FROM arr_product_bridge_tmp a
   and a.current_period = b.snapshot_date_at_new
 where b.arr_at_new > b.arr_at_churn
   and a.product_bridge in ('New', 'Cross-sell');
+drop table if exists arr_new_products_tmp;
+drop table if exists arr_churned_products_tmp;
 RAISE NOTICE 'Running customer bridge update on sst product bridge...';
 --update customer bridge and subsidiary entity
 --     update ryzlan.sst_product_group_bridge_reversal_fix a
@@ -769,6 +778,8 @@ set subsidiary_entity_name = b.subsidiary_entity_name
 from sub_entity_tmp b
 where a.mcid = b.mcid
   and a.evaluation_period = var_period;
+drop table if exists sub_entity_tmp;
+drop table if exists arr_product_bridge_tmp;
 --###########################################
 --WINBACK Downgrade
 --###########################################
@@ -1375,12 +1386,16 @@ select evaluation_period,
   churn_period,
   customer_bridge
 from temp_windowngrade_split;
+drop table if exists temp_win_downgrade_upsell;
+drop table if exists temp_windowngrade_final;
+drop table if exists temp_windowngrade_final_curated;
+drop table if exists temp_windowngrade_split;
 --###########################################
 --CPI Reversal
 --###########################################
 RAISE NOTICE 'Running CPI Reversal update on sst product group bridge...';
 drop table if exists temp_CPI_Rev_pg;
-create table temp_CPI_Rev_pg as with temp1 as (
+create temp table temp_CPI_Rev_pg as with temp1 as (
   select a.mcid,
     a.product_bridge,
     a.evaluation_period as evaluation_period_at_Downgrade_Churn,
@@ -1426,7 +1441,7 @@ select *
 from temp2;
 RAISE NOTICE 'Running CPI Reversal update on sst product group bridge 1.1 ...';
 drop table if exists temp_CPI_Reversal;
-create table temp_CPI_Reversal as with temp1 as (
+create temp table temp_CPI_Reversal as with temp1 as (
   select *,
     row_number() over (
       partition by mcid,
@@ -1645,6 +1660,10 @@ select evaluation_period,
   churn_period,
   customer_bridge
 from temp_cpireversal_split;
+drop table if exists temp_CPI_Reversal;
+drop table if exists temp_cpireversal_final;
+drop table if exists temp_cpireversal_split;
+drop table if exists temp_CPI_Rev_pg;
 --###########################################
 --Upsell Reversal
 --###########################################
@@ -1889,159 +1908,164 @@ select evaluation_period,
   churn_period,
   customer_bridge
 from temp_upselldowngrade_split;
+drop table if exists temp_downgrade_upsell;
+drop table if exists temp_upselldowngrade_final;
+drop table if exists temp_upselldowngrade_split;
 --#############################################
 --Price Ramps
 --#############################################
--- RAISE NOTICE 'Running Price Ramps on sst product bridge...';
--- drop table if exists temp_product_bridge_price_ramps;
--- create temp table temp_product_bridge_price_ramps as with cte as (
---   select mcid,
---     snapshot_date,
---     b.evaluation_period,
---     c."Product Group" as updated_product_group,
---     sum(Price_Ramp) as PriceRamp_Value,
---     sum(Price_Ramp_lcu) as PriceRamp_Value_lcu
---   from sandbox_pd.Price_Ramps a
---     join ufdm_grey.periods b on a.snapshot_date = b.current_period
---     join ufdm_grey.product_hierarchy_mappings c on a.sku = c."Product Code"
---     and c."Included in ARR" = 'Y'
---   where b.evaluation_period = var_period
---   group by c_name,
---     mcid,
---     snapshot_date,
---     c."Product Group",
---     b.evaluation_period
--- )
--- select pr.evaluation_period,
---   pr.prior_period,
---   pr.current_period,
---   pr.mcid,
---   pr.prior_period_product_arr_usd_ccfx,
---   pr.current_period_product_arr_usd_ccfx,
---   pr.product_arr_change_ccfx,
---   pr.product_bridge,
---   pr.product_arr_change_lcu,
---   pr.prior_period_product_arr_lcu,
---   cte.PriceRamp_Value,
---   cte.PriceRamp_Value_lcu,
---   cte.snapshot_date,
---   pr.current_product_group
--- from ryzlan.sst_product_group_bridge_reversal_fix pr
---   inner join cte on pr.mcid = cte.mcid
---   and pr.evaluation_period = cte.evaluation_period
---   and pr.current_product_group = cte.updated_product_group
--- where pr.product_bridge = 'Up Sell'
---   and pr.evaluation_period = var_period;
--- update ryzlan.sst_product_group_bridge_reversal_fix a
--- set product_bridge = 'Price Ramp'
--- from temp_product_bridge_price_ramps b
--- where a.mcid = b.mcid
---   and a.evaluation_period = b.evaluation_period
---   and coalesce(a.product_arr_change_ccfx::numeric, 0) <= coalesce(b.PriceRamp_Value::numeric, 0)
---   and a.product_bridge = 'Up Sell'
---   and a.evaluation_period = var_period
---   and a.current_product_group = b.current_product_group;
--- drop table if exists temp_Price_Ramp_split;
--- create temp table temp_Price_Ramp_split as
--- select distinct a.evaluation_period,
---   a.prior_period,
---   a.current_period,
---   a.current_master_customer_id,
---   a.prior_master_customer_id,
---   a.mcid,
---   a.current_product_group,
---   a.prior_product_group,
---   a.current_end_customer,
---   a.prior_end_customer,
---   a.currency_code,
---   a.prior_period_product_arr_usd_ccfx as prior_arr_usd_ccfx,
---   a.current_period_product_arr_usd_ccfx - b.PriceRamp_Value as current_arr_usd_ccfx,
---   a.product_arr_change_ccfx - b.PriceRamp_Value as product_arr_change_ccfx,
---   a.prior_period_product_arr_lcu as prior_arr_lcu,
---   a.current_period_product_arr_lcu - b.PriceRamp_Value_lcu as current_arr_lcu,
---   a.product_arr_change_lcu - b.PriceRamp_Value_lcu as product_arr_change_lcu,
---   a.product_bridge
--- from ryzlan.sst_product_group_bridge_reversal_fix a
---   join temp_product_bridge_price_ramps b on a.mcid = b.mcid
---   and a.evaluation_period = b.evaluation_period
---   and a.product_bridge = b.product_bridge
---   and a.current_product_group = b.current_product_group
--- where coalesce(a.product_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
---   and a.evaluation_period = var_period
--- union all
--- select distinct a.evaluation_period,
---   a.prior_period,
---   a.current_period,
---   a.current_master_customer_id,
---   a.prior_master_customer_id,
---   a.mcid,
---   a.current_product_group,
---   a.prior_product_group,
---   a.current_end_customer,
---   a.prior_end_customer,
---   a.currency_code,
---   '0'::numeric as prior_arr_usd_ccfx,
---   b.PriceRamp_Value as current_arr_usd_ccfx,
---   b.PriceRamp_Value as product_arr_change_ccfx,
---   '0'::numeric as prior_arr_lcu,
---   b.PriceRamp_Value_lcu as current_arr_lcu,
---   b.PriceRamp_Value_lcu as product_arr_change_lcu,
---   'Price Ramp' as product_bridge
--- from ryzlan.sst_product_group_bridge_reversal_fix a
---   join temp_product_bridge_price_ramps b on a.mcid = b.mcid
---   and a.evaluation_period = b.evaluation_period
---   and a.product_bridge = b.product_bridge
---   and a.current_product_group = b.current_product_group
--- where coalesce(a.product_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
---   and a.evaluation_period = var_period
--- order by mcid;
--- delete from ryzlan.sst_product_group_bridge_reversal_fix a using temp_product_bridge_price_ramps b
--- where 1 = 1
---   and a.mcid = b.mcid
---   and a.evaluation_period = b.evaluation_period
---   and coalesce(a.product_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
---   and a.product_bridge = 'Up Sell'
---   and a.evaluation_period = var_period
---   and a.current_product_group = b.current_product_group;
--- insert into ryzlan.sst_product_group_bridge_reversal_fix (
---     evaluation_period,
---     prior_period,
---     current_period,
---     current_master_customer_id,
---     prior_master_customer_id,
---     mcid,
---     current_product_group,
---     prior_product_group,
---     current_end_customer,
---     prior_end_customer,
---     currency_code,
---     current_period_product_arr_usd_ccfx,
---     prior_period_product_arr_usd_ccfx,
---     product_arr_change_ccfx,
---     current_period_product_arr_lcu,
---     prior_period_product_arr_lcu,
---     product_arr_change_lcu,
---     product_bridge
---   )
--- select evaluation_period,
---   prior_period,
---   current_period,
---   current_master_customer_id,
---   prior_master_customer_id,
---   mcid,
---   current_product_group,
---   prior_product_group,
---   current_end_customer,
---   prior_end_customer,
---   currency_code,
---   current_arr_usd_ccfx,
---   prior_arr_usd_ccfx,
---   product_arr_change_ccfx,
---   current_arr_lcu,
---   prior_arr_lcu,
---   product_arr_change_lcu,
---   product_bridge
--- from temp_Price_Ramp_split;
+RAISE NOTICE 'Running Price Ramps on sst product bridge...';
+drop table if exists temp_product_bridge_price_ramps;
+create temp table temp_product_bridge_price_ramps as with cte as (
+    select mcid,
+        snapshot_date,
+        b.evaluation_period,
+        c."Product Group" as updated_product_group,
+        sum(Price_Ramp) as PriceRamp_Value,
+        sum(Price_Ramp_lcu) as PriceRamp_Value_lcu
+    from sandbox_pd.Price_Ramps a
+        join ufdm_grey.periods b on a.snapshot_date = b.current_period
+        join ufdm_grey.product_hierarchy_mappings c on a.sku = c."Product Code"
+        and c."Included in ARR" = 'Y'
+    where b.evaluation_period = var_period
+    group by c_name,
+        mcid,
+        snapshot_date,
+        c."Product Group",
+        b.evaluation_period
+)
+select pr.evaluation_period,
+    pr.prior_period,
+    pr.current_period,
+    pr.mcid,
+    pr.prior_period_product_arr_usd_ccfx,
+    pr.current_period_product_arr_usd_ccfx,
+    pr.product_arr_change_ccfx,
+    pr.product_bridge,
+    pr.product_arr_change_lcu,
+    pr.prior_period_product_arr_lcu,
+    cte.PriceRamp_Value,
+    cte.PriceRamp_Value_lcu,
+    cte.snapshot_date,
+    pr.current_product_group
+from ryzlan.sst_product_group_bridge_reversal_fix pr
+    inner join cte on pr.mcid = cte.mcid
+    and pr.evaluation_period = cte.evaluation_period
+    and pr.current_product_group = cte.updated_product_group
+where pr.product_bridge = 'Up Sell'
+    and pr.evaluation_period = var_period;
+update ryzlan.sst_product_group_bridge_reversal_fix a
+set product_bridge = 'Price Ramp'
+from temp_product_bridge_price_ramps b
+where a.mcid = b.mcid
+    and a.evaluation_period = b.evaluation_period
+    and coalesce(a.product_arr_change_ccfx::numeric, 0) <= coalesce(b.PriceRamp_Value::numeric, 0)
+    and a.product_bridge = 'Up Sell'
+    and a.evaluation_period = var_period
+    and a.current_product_group = b.current_product_group;
+drop table if exists temp_Price_Ramp_split;
+create temp table temp_Price_Ramp_split as
+select distinct a.evaluation_period,
+    a.prior_period,
+    a.current_period,
+    a.current_master_customer_id,
+    a.prior_master_customer_id,
+    a.mcid,
+    a.current_product_group,
+    a.prior_product_group,
+    a.current_end_customer,
+    a.prior_end_customer,
+    a.currency_code,
+    a.prior_period_product_arr_usd_ccfx as prior_arr_usd_ccfx,
+    a.current_period_product_arr_usd_ccfx - b.PriceRamp_Value as current_arr_usd_ccfx,
+    a.product_arr_change_ccfx - b.PriceRamp_Value as product_arr_change_ccfx,
+    a.prior_period_product_arr_lcu as prior_arr_lcu,
+    a.current_period_product_arr_lcu - b.PriceRamp_Value_lcu as current_arr_lcu,
+    a.product_arr_change_lcu - b.PriceRamp_Value_lcu as product_arr_change_lcu,
+    a.product_bridge
+from ryzlan.sst_product_group_bridge_reversal_fix a
+    join temp_product_bridge_price_ramps b on a.mcid = b.mcid
+    and a.evaluation_period = b.evaluation_period
+    and a.product_bridge = b.product_bridge
+    and a.current_product_group = b.current_product_group
+where coalesce(a.product_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
+    and a.evaluation_period = var_period
+union all
+select distinct a.evaluation_period,
+    a.prior_period,
+    a.current_period,
+    a.current_master_customer_id,
+    a.prior_master_customer_id,
+    a.mcid,
+    a.current_product_group,
+    a.prior_product_group,
+    a.current_end_customer,
+    a.prior_end_customer,
+    a.currency_code,
+    '0'::numeric as prior_arr_usd_ccfx,
+    b.PriceRamp_Value as current_arr_usd_ccfx,
+    b.PriceRamp_Value as product_arr_change_ccfx,
+    '0'::numeric as prior_arr_lcu,
+    b.PriceRamp_Value_lcu as current_arr_lcu,
+    b.PriceRamp_Value_lcu as product_arr_change_lcu,
+    'Price Ramp' as product_bridge
+from ryzlan.sst_product_group_bridge_reversal_fix a
+    join temp_product_bridge_price_ramps b on a.mcid = b.mcid
+    and a.evaluation_period = b.evaluation_period
+    and a.product_bridge = b.product_bridge
+    and a.current_product_group = b.current_product_group
+where coalesce(a.product_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
+    and a.evaluation_period = var_period
+order by mcid;
+delete from ryzlan.sst_product_group_bridge_reversal_fix a using temp_product_bridge_price_ramps b
+where 1 = 1
+    and a.mcid = b.mcid
+    and a.evaluation_period = b.evaluation_period
+    and coalesce(a.product_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
+    and a.product_bridge = 'Up Sell'
+    and a.evaluation_period = var_period
+    and a.current_product_group = b.current_product_group;
+insert into ryzlan.sst_product_group_bridge_reversal_fix (
+        evaluation_period,
+        prior_period,
+        current_period,
+        current_master_customer_id,
+        prior_master_customer_id,
+        mcid,
+        current_product_group,
+        prior_product_group,
+        current_end_customer,
+        prior_end_customer,
+        currency_code,
+        current_period_product_arr_usd_ccfx,
+        prior_period_product_arr_usd_ccfx,
+        product_arr_change_ccfx,
+        current_period_product_arr_lcu,
+        prior_period_product_arr_lcu,
+        product_arr_change_lcu,
+        product_bridge
+    )
+select evaluation_period,
+    prior_period,
+    current_period,
+    current_master_customer_id,
+    prior_master_customer_id,
+    mcid,
+    current_product_group,
+    prior_product_group,
+    current_end_customer,
+    prior_end_customer,
+    currency_code,
+    current_arr_usd_ccfx,
+    prior_arr_usd_ccfx,
+    product_arr_change_ccfx,
+    current_arr_lcu,
+    prior_arr_lcu,
+    product_arr_change_lcu,
+    product_bridge
+from temp_Price_Ramp_split;
+drop table if exists temp_product_bridge_price_ramps;
+drop table if exists temp_Price_Ramp_split;
 RAISE NOTICE 'Running rounding errors update on sst product bridge group...';
 --rounding errors updates
 update ryzlan.sst_product_group_bridge_reversal_fix

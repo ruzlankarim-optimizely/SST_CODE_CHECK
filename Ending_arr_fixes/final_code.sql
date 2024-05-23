@@ -1,7 +1,23 @@
 -- New script in dw-prod-rds-master.cr9dekxonyuj.us-east-1.rds.amaz.
 -- Date: May 14, 2024
 -- Time: 4:20:43 PM
-ALTER TABLE ryzlan.sst_reversal_fix_4_1 DROP COLUMN ending_arr_comment DROP COLUMN sum_arr DROP TABLE IF EXISTS ryzlan.ending_arr_marker;
+--4e128cce-793a-e811-8124-70106faab5f1  2023M10 2023M11  2023M12
+-- e412863b-fd0a-4234-953b-188bc6f848fe 2021M03
+--CREATE TABLE ryzlan.sst_reversal_fix_1_1 AS
+--SELECT *
+--FROM ryzlan.sst_ending_arr_tester_final;
+--CREATE TABLE ryzlan.sst_pg_reversal_fix_1_1 AS
+--SELECT *
+--FROM ryzlan.sst_product_group_bridge_reversal_fix;
+--CREATE TABLE ryzlan.sst_cb_reversal_fix_1_1 AS
+--SELECT *
+--FROM ryzlan.sst_customer_bridge_reversal_fix;
+ALTER TABLE ryzlan.sst_ending_arr_fix_4 DROP COLUMN ending_arr_comment,
+  DROP COLUMN sum_arr,
+  DROP COLUMN sum_baseline_arr_local_currency,
+  DROP COLUMN ratio_arr_local_currency,
+  DROP COLUMN ratio_arr;
+DROP TABLE IF EXISTS ryzlan.ending_arr_marker;
 CREATE TABLE ryzlan.ending_arr_marker AS (
   WITH main AS (
     SELECT --id,
@@ -10,8 +26,8 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
         (
           CASE
             WHEN current_period IS NULL
-            AND prior_period IS NOT NULL then date(
-              date_trunc('month', prior_period) + INTERVAL '1 month' + interval '1 month - 1 day'
+            AND prior_period IS NOT NULL THEN date(
+              date_trunc('month', prior_period) + INTERVAL '1 month' + INTERVAL '1 month - 1 day'
             )
             ELSE current_period
           END
@@ -20,15 +36,15 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
       ) AS eval_period,
       CASE
         WHEN current_period IS NULL
-        AND prior_period IS NOT NULL then date(
-          date_trunc('month', prior_period) + INTERVAL '1 month' + interval '1 month - 1 day'
+        AND prior_period IS NOT NULL THEN date(
+          date_trunc('month', prior_period) + INTERVAL '1 month' + INTERVAL '1 month - 1 day'
         )
         ELSE current_period
       END AS current_period,
       CASE
         WHEN prior_period IS NULL
-        AND current_period IS NOT NULL then date(
-          date_trunc('month', current_period) - INTERVAL '1 month' + interval '1 month - 1 day'
+        AND current_period IS NOT NULL THEN date(
+          date_trunc('month', current_period) - INTERVAL '1 month' + INTERVAL '1 month - 1 day'
         )
         ELSE prior_period
       END AS prior_period,
@@ -39,7 +55,7 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
       customer_arr_change_ccfx,
       customer_arr_change_lcu,
       customer_bridge
-    FROM ryzlan.sst_cb_reversal_fix_4_1 --ryzlan.sst_cb_reversal_fix_1
+    FROM ryzlan.sst_ending_arr_cb_4 --ryzlan.sst_cb_reversal_fix_1
       --ryzlan.sst_customer_bridge_reversal_fix   --    ryzlan.sst_customer_bridge_reversal_fix
       --    ufdm_archive.sst_customer_bridge_lcoked_07052024_1157
       --    ryzlan.sst_customer_bridge_pp
@@ -66,65 +82,65 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
   ),
   base_two AS (
     SELECT *,
-      Lag(customer_bridge, 1) OVER(
+      LAG(customer_bridge, 1) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 1 bridge_movement",
-      Lag(customer_bridge, 2) OVER(
+      LAG(customer_bridge, 2) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 2 bridge_movement",
-      Lag(customer_bridge, 3) OVER(
+      LAG(customer_bridge, 3) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 3 bridge_movement",
-      Lag(customer_bridge, 4) OVER(
+      LAG(customer_bridge, 4) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 4 bridge_movement",
-      Lag(customer_bridge, 5) OVER(
+      LAG(customer_bridge, 5) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 5 bridge_movement",
-      Lag(customer_bridge, 6) OVER(
+      LAG(customer_bridge, 6) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 6 bridge_movement",
-      Lag(customer_bridge, 7) OVER(
+      LAG(customer_bridge, 7) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 7 bridge_movement",
-      Lag(customer_bridge, 8) OVER(
+      LAG(customer_bridge, 8) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 8 bridge_movement",
-      Lag(customer_bridge, 9) OVER(
+      LAG(customer_bridge, 9) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 9 bridge_movement",
-      Lag(customer_bridge, 10) OVER(
+      LAG(customer_bridge, 10) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 10 bridge_movement",
-      Lag(customer_bridge, 11) OVER(
+      LAG(customer_bridge, 11) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 11 bridge_movement",
-      Lag(customer_bridge, 12) OVER(
+      LAG(customer_bridge, 12) OVER(
         PARTITION BY mcid
         ORDER BY eval_period,
-          row_num desc
+          row_num DESC
       ) AS "n - 12 bridge_movement"
     FROM base
   ),
@@ -132,212 +148,212 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
     SELECT *,
       CASE
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 1 bridge_movement" = 'Up Sell' then 1
+        AND "n - 1 bridge_movement" = 'Up Sell' THEN 1
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 2 bridge_movement" = 'Up Sell' then 2
+        AND "n - 2 bridge_movement" = 'Up Sell' THEN 2
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 3 bridge_movement" = 'Up Sell' then 3
+        AND "n - 3 bridge_movement" = 'Up Sell' THEN 3
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 4 bridge_movement" = 'Up Sell' then 4
+        AND "n - 4 bridge_movement" = 'Up Sell' THEN 4
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 5 bridge_movement" = 'Up Sell' then 5
+        AND "n - 5 bridge_movement" = 'Up Sell' THEN 5
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 6 bridge_movement" = 'Up Sell' then 6
+        AND "n - 6 bridge_movement" = 'Up Sell' THEN 6
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 7 bridge_movement" = 'Up Sell' then 7
+        AND "n - 7 bridge_movement" = 'Up Sell' THEN 7
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 8 bridge_movement" = 'Up Sell' then 8
+        AND "n - 8 bridge_movement" = 'Up Sell' THEN 8
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 9 bridge_movement" = 'Up Sell' then 9
+        AND "n - 9 bridge_movement" = 'Up Sell' THEN 9
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 10 bridge_movement" = 'Up Sell' then 10
+        AND "n - 10 bridge_movement" = 'Up Sell' THEN 10
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 11 bridge_movement" = 'Up Sell' then 11
+        AND "n - 11 bridge_movement" = 'Up Sell' THEN 11
         WHEN customer_bridge = 'Up Sell Reversal'
-        AND "n - 12 bridge_movement" = 'Up Sell' then 12
+        AND "n - 12 bridge_movement" = 'Up Sell' THEN 12
         ELSE 0
       END AS upsell_reversal_flag,
       CASE
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 1 bridge_movement" = 'Cross-sell' then 1
+        AND "n - 1 bridge_movement" = 'Cross-sell' THEN 1
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 2 bridge_movement" = 'Cross-sell' then 2
+        AND "n - 2 bridge_movement" = 'Cross-sell' THEN 2
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 3 bridge_movement" = 'Cross-sell' then 3
+        AND "n - 3 bridge_movement" = 'Cross-sell' THEN 3
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 4 bridge_movement" = 'Cross-sell' then 4
+        AND "n - 4 bridge_movement" = 'Cross-sell' THEN 4
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 5 bridge_movement" = 'Cross-sell' then 5
+        AND "n - 5 bridge_movement" = 'Cross-sell' THEN 5
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 6 bridge_movement" = 'Cross-sell' then 6
+        AND "n - 6 bridge_movement" = 'Cross-sell' THEN 6
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 7 bridge_movement" = 'Cross-sell' then 7
+        AND "n - 7 bridge_movement" = 'Cross-sell' THEN 7
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 8 bridge_movement" = 'Cross-sell' then 8
+        AND "n - 8 bridge_movement" = 'Cross-sell' THEN 8
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 9 bridge_movement" = 'Cross-sell' then 9
+        AND "n - 9 bridge_movement" = 'Cross-sell' THEN 9
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 10 bridge_movement" = 'Cross-sell' then 10
+        AND "n - 10 bridge_movement" = 'Cross-sell' THEN 10
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 11 bridge_movement" = 'Cross-sell' then 11
+        AND "n - 11 bridge_movement" = 'Cross-sell' THEN 11
         WHEN customer_bridge = 'Cross-sell Reversal'
-        AND "n - 12 bridge_movement" = 'Cross-sell' then 12
+        AND "n - 12 bridge_movement" = 'Cross-sell' THEN 12
         ELSE 0
       END AS crosssell_reversal_flag,
       CASE
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 1 bridge_movement" = 'Churn' then 1
+        AND "n - 1 bridge_movement" = 'Churn' THEN 1
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 2 bridge_movement" = 'Churn' then 2
+        AND "n - 2 bridge_movement" = 'Churn' THEN 2
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 3 bridge_movement" = 'Churn' then 3
+        AND "n - 3 bridge_movement" = 'Churn' THEN 3
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 4 bridge_movement" = 'Churn' then 4
+        AND "n - 4 bridge_movement" = 'Churn' THEN 4
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 5 bridge_movement" = 'Churn' then 5
+        AND "n - 5 bridge_movement" = 'Churn' THEN 5
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 6 bridge_movement" = 'Churn' then 6
+        AND "n - 6 bridge_movement" = 'Churn' THEN 6
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 7 bridge_movement" = 'Churn' then 7
+        AND "n - 7 bridge_movement" = 'Churn' THEN 7
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 8 bridge_movement" = 'Churn' then 8
+        AND "n - 8 bridge_movement" = 'Churn' THEN 8
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 9 bridge_movement" = 'Churn' then 9
+        AND "n - 9 bridge_movement" = 'Churn' THEN 9
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 10 bridge_movement" = 'Churn' then 10
+        AND "n - 10 bridge_movement" = 'Churn' THEN 10
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 11 bridge_movement" = 'Churn' then 11
+        AND "n - 11 bridge_movement" = 'Churn' THEN 11
         WHEN (
           customer_bridge = 'Winback ST'
-          or customer_bridge = 'Winback'
-          or customer_bridge = 'Winback LT'
+          OR customer_bridge = 'Winback'
+          OR customer_bridge = 'Winback LT'
         )
-        AND "n - 12 bridge_movement" = 'Churn' then 12
+        AND "n - 12 bridge_movement" = 'Churn' THEN 12
         ELSE 0
       END AS winback_reversal_flag,
       CASE
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 1 bridge_movement" = 'Downgrade' then 1
+        AND "n - 1 bridge_movement" = 'Downgrade' THEN 1
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 2 bridge_movement" = 'Downgrade' then 2
+        AND "n - 2 bridge_movement" = 'Downgrade' THEN 2
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 3 bridge_movement" = 'Downgrade' then 3
+        AND "n - 3 bridge_movement" = 'Downgrade' THEN 3
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 4 bridge_movement" = 'Downgrade' then 4
+        AND "n - 4 bridge_movement" = 'Downgrade' THEN 4
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 5 bridge_movement" = 'Downgrade' then 5
+        AND "n - 5 bridge_movement" = 'Downgrade' THEN 5
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 6 bridge_movement" = 'Downgrade' then 6
+        AND "n - 6 bridge_movement" = 'Downgrade' THEN 6
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 7 bridge_movement" = 'Downgrade' then 7
+        AND "n - 7 bridge_movement" = 'Downgrade' THEN 7
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 8 bridge_movement" = 'Downgrade' then 8
+        AND "n - 8 bridge_movement" = 'Downgrade' THEN 8
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 9 bridge_movement" = 'Downgrade' then 9
+        AND "n - 9 bridge_movement" = 'Downgrade' THEN 9
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 10 bridge_movement" = 'Downgrade' then 10
+        AND "n - 10 bridge_movement" = 'Downgrade' THEN 10
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 11 bridge_movement" = 'Downgrade' then 11
+        AND "n - 11 bridge_movement" = 'Downgrade' THEN 11
         WHEN customer_bridge = 'Win back Downgrade'
-        AND "n - 12 bridge_movement" = 'Downgrade' then 12
+        AND "n - 12 bridge_movement" = 'Downgrade' THEN 12
         ELSE 0
       END AS winback_downgrade_flag,
       CASE
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 1 bridge_movement" = 'Downsell' then 1
+        AND "n - 1 bridge_movement" = 'Downsell' THEN 1
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 2 bridge_movement" = 'Downsell' then 2
+        AND "n - 2 bridge_movement" = 'Downsell' THEN 2
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 3 bridge_movement" = 'Downsell' then 3
+        AND "n - 3 bridge_movement" = 'Downsell' THEN 3
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 4 bridge_movement" = 'Downsell' then 4
+        AND "n - 4 bridge_movement" = 'Downsell' THEN 4
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 5 bridge_movement" = 'Downsell' then 5
+        AND "n - 5 bridge_movement" = 'Downsell' THEN 5
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 6 bridge_movement" = 'Downsell' then 6
+        AND "n - 6 bridge_movement" = 'Downsell' THEN 6
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 7 bridge_movement" = 'Downsell' then 7
+        AND "n - 7 bridge_movement" = 'Downsell' THEN 7
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 8 bridge_movement" = 'Downsell' then 8
+        AND "n - 8 bridge_movement" = 'Downsell' THEN 8
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 9 bridge_movement" = 'Downsell' then 9
+        AND "n - 9 bridge_movement" = 'Downsell' THEN 9
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 10 bridge_movement" = 'Downsell' then 10
+        AND "n - 10 bridge_movement" = 'Downsell' THEN 10
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 11 bridge_movement" = 'Downsell' then 11
+        AND "n - 11 bridge_movement" = 'Downsell' THEN 11
         WHEN customer_bridge = 'Win back Downsell'
-        AND "n - 12 bridge_movement" = 'Downsell' then 12
+        AND "n - 12 bridge_movement" = 'Downsell' THEN 12
         ELSE 0
       END AS winback_downsell_flag,
       CASE
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 1 bridge_movement" = 'Price Uplift' then 1
+        AND "n - 1 bridge_movement" = 'Price Uplift' THEN 1
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 2 bridge_movement" = 'Price Uplift' then 2
+        AND "n - 2 bridge_movement" = 'Price Uplift' THEN 2
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 3 bridge_movement" = 'Price Uplift' then 3
+        AND "n - 3 bridge_movement" = 'Price Uplift' THEN 3
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 4 bridge_movement" = 'Price Uplift' then 4
+        AND "n - 4 bridge_movement" = 'Price Uplift' THEN 4
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 5 bridge_movement" = 'Price Uplift' then 5
+        AND "n - 5 bridge_movement" = 'Price Uplift' THEN 5
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 6 bridge_movement" = 'Price Uplift' then 6
+        AND "n - 6 bridge_movement" = 'Price Uplift' THEN 6
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 7 bridge_movement" = 'Price Uplift' then 7
+        AND "n - 7 bridge_movement" = 'Price Uplift' THEN 7
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 8 bridge_movement" = 'Price Uplift' then 8
+        AND "n - 8 bridge_movement" = 'Price Uplift' THEN 8
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 9 bridge_movement" = 'Price Uplift' then 9
+        AND "n - 9 bridge_movement" = 'Price Uplift' THEN 9
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 10 bridge_movement" = 'Price Uplift' then 10
+        AND "n - 10 bridge_movement" = 'Price Uplift' THEN 10
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 11 bridge_movement" = 'Price Uplift' then 11
+        AND "n - 11 bridge_movement" = 'Price Uplift' THEN 11
         WHEN customer_bridge = 'Price Uplift Reversal'
-        AND "n - 12 bridge_movement" = 'Price Uplift' then 12
+        AND "n - 12 bridge_movement" = 'Price Uplift' THEN 12
         ELSE 0
       END AS cpi_reversal_flag
     FROM base_two
@@ -347,21 +363,21 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
     SELECT a.*,
       --- Up Sell Reversal
       CASE
-        WHEN (a.upsell_reversal_flag > 0) THEN Lag(
+        WHEN (a.upsell_reversal_flag > 0) THEN LAG(
           a.current_period_customer_arr_usd_ccfx,
           a.upsell_reversal_flag
         ) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS upsellR_start_arr,
       CASE
-        WHEN (a.upsell_reversal_flag > 0) THEN Lag(a.current_period, a.upsell_reversal_flag) OVER(
+        WHEN (a.upsell_reversal_flag > 0) THEN LAG(a.current_period, a.upsell_reversal_flag) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS upsellR_start_date,
@@ -379,21 +395,21 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
       END AS upsellR_delta_arr_lcu,
       --- cross selll Reversal
       CASE
-        WHEN (a.crosssell_reversal_flag > 0) THEN Lag(
+        WHEN (a.crosssell_reversal_flag > 0) THEN LAG(
           a.current_period_customer_arr_usd_ccfx,
           a.crosssell_reversal_flag
         ) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS crossellR_start_arr,
       CASE
-        WHEN (a.crosssell_reversal_flag > 0) THEN Lag(a.current_period, a.crosssell_reversal_flag) OVER(
+        WHEN (a.crosssell_reversal_flag > 0) THEN LAG(a.current_period, a.crosssell_reversal_flag) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS crossellR_start_date,
@@ -411,21 +427,21 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
       END AS crossellR_delta_arr_lcu,
       -- Price Uplift Reversal
       CASE
-        WHEN (a.cpi_reversal_flag > 0) THEN Lag(
+        WHEN (a.cpi_reversal_flag > 0) THEN LAG(
           a.current_period_customer_arr_usd_ccfx,
           a.cpi_reversal_flag
         ) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS cpiR_start_arr,
       CASE
-        WHEN a.cpi_reversal_flag > 0 THEN Lag(a.current_period, a.cpi_reversal_flag) OVER(
+        WHEN a.cpi_reversal_flag > 0 THEN LAG(a.current_period, a.cpi_reversal_flag) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS cpiR_start_date,
@@ -443,29 +459,29 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
       END AS cpiR_delta_arr_lcu,
       -- Winback LT/ ST
       CASE
-        WHEN (a.winback_reversal_flag > 0) THEN Lag(
+        WHEN (a.winback_reversal_flag > 0) THEN LAG(
           a.current_period_customer_arr_usd_ccfx,
           a.winback_reversal_flag
         ) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS winback_start_arr,
       CASE
-        WHEN a.winback_reversal_flag > 0 THEN Lag(a.current_period, a.winback_reversal_flag) OVER(
+        WHEN a.winback_reversal_flag > 0 THEN LAG(a.current_period, a.winback_reversal_flag) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS winback_start_date,
       CASE
-        WHEN a.winback_reversal_flag > 0 THEN Lag(a.prior_period, a.winback_reversal_flag) OVER(
+        WHEN a.winback_reversal_flag > 0 THEN LAG(a.prior_period, a.winback_reversal_flag) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS winback_pull_back_date,
@@ -475,55 +491,55 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
       END AS winback_end_date,
       CASE
         WHEN a.winback_reversal_flag > 0 THEN (
-          customer_arr_change_ccfx + Lag(
+          customer_arr_change_ccfx + LAG(
             a.customer_arr_change_ccfx,
             a.winback_reversal_flag
           ) OVER(
             PARTITION BY a.mcid
             ORDER BY eval_period,
-              row_num desc
+              row_num DESC
           )
         )
         ELSE NULL
       END AS winback_delta_arr,
       CASE
         WHEN a.winback_reversal_flag > 0 THEN (
-          customer_arr_change_lcu + Lag(
+          customer_arr_change_lcu + LAG(
             a.customer_arr_change_lcu,
             a.winback_reversal_flag
           ) OVER(
             PARTITION BY a.mcid
             ORDER BY eval_period,
-              row_num desc
+              row_num DESC
           )
         )
         ELSE NULL
       END AS winback_delta_arr_lcu,
       -- Winback downgrade
       CASE
-        WHEN (a.winback_downgrade_flag > 0) THEN Lag(
+        WHEN (a.winback_downgrade_flag > 0) THEN LAG(
           a.current_period_customer_arr_usd_ccfx,
           a.winback_downgrade_flag
         ) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS winback_downgrade_start_arr,
       CASE
-        WHEN a.winback_downgrade_flag > 0 THEN Lag(a.current_period, a.winback_downgrade_flag) OVER(
+        WHEN a.winback_downgrade_flag > 0 THEN LAG(a.current_period, a.winback_downgrade_flag) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS winback_downgrade_start_date,
       CASE
-        WHEN a.winback_downgrade_flag > 0 THEN Lag(a.prior_period, a.winback_downgrade_flag) OVER(
+        WHEN a.winback_downgrade_flag > 0 THEN LAG(a.prior_period, a.winback_downgrade_flag) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS winback_downgrade_pull_back_date,
@@ -541,29 +557,29 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
       END AS winback_downgrade_delta_arr_lcu,
       -- Winback downsell
       CASE
-        WHEN (a.winback_downsell_flag > 0) THEN Lag(
+        WHEN (a.winback_downsell_flag > 0) THEN LAG(
           a.current_period_customer_arr_usd_ccfx,
           a.winback_downsell_flag
         ) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS winback_downsell_start_arr,
       CASE
-        WHEN a.winback_downsell_flag > 0 THEN Lag(a.current_period, a.winback_downsell_flag) OVER(
+        WHEN a.winback_downsell_flag > 0 THEN LAG(a.current_period, a.winback_downsell_flag) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS winback_downsell_start_date,
       CASE
-        WHEN a.winback_downsell_flag > 0 THEN Lag(a.prior_period, a.winback_downsell_flag) OVER(
+        WHEN a.winback_downsell_flag > 0 THEN LAG(a.prior_period, a.winback_downsell_flag) OVER(
           PARTITION BY a.mcid
           ORDER BY eval_period,
-            row_num desc
+            row_num DESC
         )
         ELSE NULL
       END AS winback_downsell_pull_back_date,
@@ -608,7 +624,7 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
         upsellR_end_date::TIMESTAMP - upsellR_start_date::TIMESTAMP
       ) AS upsellR_day_diff,
       CASE
-        WHEN upsell_reversal_flag > 0 THEN ROW_NUMBER () over(
+        WHEN upsell_reversal_flag > 0 THEN ROW_NUMBER () OVER(
           PARTITION BY mcid,
           customer_bridge,
           upsellr_start_date
@@ -617,7 +633,7 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
         ELSE NULL
       END AS upsell_rnk,
       CASE
-        WHEN crosssell_reversal_flag > 0 THEN ROW_NUMBER () over(
+        WHEN crosssell_reversal_flag > 0 THEN ROW_NUMBER () OVER(
           PARTITION BY mcid,
           customer_bridge,
           crossellR_start_date
@@ -626,7 +642,7 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
         ELSE NULL
       END AS crosssell_rnk,
       CASE
-        WHEN cpi_reversal_flag > 0 THEN ROW_NUMBER () over(
+        WHEN cpi_reversal_flag > 0 THEN ROW_NUMBER () OVER(
           PARTITION BY mcid,
           customer_bridge,
           cpiR_start_date
@@ -635,7 +651,7 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
         ELSE NULL
       END AS cpi_rnk,
       CASE
-        WHEN winback_reversal_flag > 0 THEN ROW_NUMBER () over(
+        WHEN winback_reversal_flag > 0 THEN ROW_NUMBER () OVER(
           PARTITION BY mcid,
           customer_bridge,
           winback_start_date
@@ -644,7 +660,7 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
         ELSE NULL
       END AS winback_rnk,
       CASE
-        WHEN winback_downgrade_flag > 0 THEN ROW_NUMBER () over(
+        WHEN winback_downgrade_flag > 0 THEN ROW_NUMBER () OVER(
           PARTITION BY mcid,
           customer_bridge,
           winback_downgrade_start_date
@@ -653,7 +669,7 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
         ELSE NULL
       END AS winback_downgrade_rnk,
       CASE
-        WHEN winback_downsell_flag > 0 THEN ROW_NUMBER () over(
+        WHEN winback_downsell_flag > 0 THEN ROW_NUMBER () OVER(
           PARTITION BY mcid,
           customer_bridge,
           winback_downsell_start_date
@@ -665,10 +681,10 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
   )
   SELECT a.*
   FROM day_filter AS a
-  WHERE --  mcid = '4e128cce-793a-e811-8124-70106faab5f1' AND 
+  WHERE --  mcid = '4e128cce-793a-e811-8124-70106faab5f1' AND
     --  mcid IN ( '30f35937-33a5-e811-814d-70106fa55dc1'
     --  '4e128cce-793a-e811-8124-70106faab5f1' , 'e412863b-fd0a-4234-953b-188bc6f848fe'
-    --  ) AND 
+    --  ) AND
     (
       (
         upsell_reversal_flag > 0
@@ -709,20 +725,20 @@ DROP TABLE IF EXISTS ryzlan.sst_ending_arr_tester_reversals;
 CREATE TABLE ryzlan.sst_ending_arr_tester_reversals AS WITH main AS (
   SELECT *,
     round(
-      sum(arr) over(
+      sum(arr) OVER(
         PARTITION BY mcid,
         snapshot_date,
         base_currency
       )
     ) AS sum_arr,
     round(
-      sum(baseline_arr_local_currency) over(
+      sum(baseline_arr_local_currency) OVER(
         PARTITION BY mcid,
         snapshot_date,
         base_currency
       )
     ) AS sum_baseline_arr_local_currency
-  FROM ryzlan.sst_reversal_fix_4_1 --  ufdm_archive.sst_lcoked_07052024_1157 --ryzlan.sst_ending_arr_tester_final
+  FROM ryzlan.sst_ending_arr_fix_4 --  ufdm_archive.sst_lcoked_07052024_1157 --ryzlan.sst_ending_arr_tester_final
     --  ufdm_archive.sst_lcoked_07052024_1157 --  ryzlan.sst_adhoc
 )
 SELECT *,
@@ -742,49 +758,49 @@ FROM main --WHERE mcid IN ( '4e128cce-793a-e811-8124-70106faab5f1' , 'e412863b-f
 --SELECT snapshot_date  , mcid , ending_arr_comment  , sum(arr) AS arr    FROM ryzlan.sst_ending_arr_tester_reversals
 --WHERE mcid = '4e128cce-793a-e811-8124-70106faab5f1'
 --GROUP BY 1 ,2 ,3
---LIMIT 1 
+--LIMIT 1
 --
---SELECT 
---    snapshot_date , 
+--SELECT
+--    snapshot_date ,
 --    mcid ,
 --    sku ,
---    arr , 
---    ratio_arr , 
+--    arr ,
+--    ratio_arr ,
 --    sum_arr
 --FROM  ryzlan.sst_ending_arr_tester_reversals
---WHERE mcid = '4e128cce-793a-e811-8124-70106faab5f1' AND arr <> 0.0 
+--WHERE mcid = '4e128cce-793a-e811-8124-70106faab5f1' AND arr <> 0.0
 --
---SELECT 
+--SELECT
 --*,
---ROW_NUMBER () over(PARTITION BY mcid , customer_bridge ,  upsellr_start_date)  AS rnk  
--- 
---FROM ryzlan.ending_arr_marker 
+--ROW_NUMBER () over(PARTITION BY mcid , customer_bridge ,  upsellr_start_date)  AS rnk
 --
---SELECT 
---    snapshot_date , 
---    m.mcid , 
---    arr , 
---    ratio_arr , 
+--FROM ryzlan.ending_arr_marker
+--
+--SELECT
+--    snapshot_date ,
+--    m.mcid ,
+--    arr ,
+--    ratio_arr ,
 --    sum_arr ,
 ----    upsellR_delta_arr AS ch ,
 ----    sum(upsellR_delta_arr) upsellR_delta_arr,
-----    round((sum_arr + sum(upsellR_delta_arr)) * ratio_arr) AS new_Arr 
-----    OVER(PARTITION BY m.snapshot_date , m.mcid , m.arr ) AS  upsellR_delta_arr  
---    
---    round(CAST((sum_arr + a.upsellR_delta_arr) * ratio_arr AS NUMERIC) ,2 ) AS new_arr , 
-----    sum_arr , 
---     round(CAST(sum_arr + a.upsellR_delta_arr AS NUMERIC ) , 2  ) 
---FROM  ryzlan.sst_ending_arr_tester_reversals AS m    
+----    round((sum_arr + sum(upsellR_delta_arr)) * ratio_arr) AS new_Arr
+----    OVER(PARTITION BY m.snapshot_date , m.mcid , m.arr ) AS  upsellR_delta_arr
+--
+--    round(CAST((sum_arr + a.upsellR_delta_arr) * ratio_arr AS NUMERIC) ,2 ) AS new_arr ,
+----    sum_arr ,
+--     round(CAST(sum_arr + a.upsellR_delta_arr AS NUMERIC ) , 2  )
+--FROM  ryzlan.sst_ending_arr_tester_reversals AS m
 --JOIN    ryzlan.ending_arr_marker AS a
 --on m.mcid = a.mcid
 --  AND m.snapshot_date >= a.upsellR_start_date
 --  AND m.snapshot_date <= a.upsellR_end_date
---  AND a.upsell_reversal_flag > 0  
---  WHERE  rnk = 1 
----- and  m.mcid = '4e128cce-793a-e811-8124-70106faab5f1' 
-----  AND arr <> 0.0 
---GROUP BY 1,2,3,4,5 ,6  
--- Fix Upsell Reversal 
+--  AND a.upsell_reversal_flag > 0
+--  WHERE  rnk = 1
+---- and  m.mcid = '4e128cce-793a-e811-8124-70106faab5f1'
+----  AND arr <> 0.0
+--GROUP BY 1,2,3,4,5 ,6
+-- Fix Upsell Reversal
 UPDATE ryzlan.sst_ending_arr_tester_reversals AS m
 SET arr = round(
     CAST(
@@ -793,7 +809,7 @@ SET arr = round(
     3
   ),
   sum_arr = round(
-    CAST(sum_arr + a.upsellR_delta_arr as NUMERIC),
+    CAST(sum_arr + a.upsellR_delta_arr AS NUMERIC),
     3
   ),
   baseline_arr_local_currency = round(
@@ -819,16 +835,16 @@ WHERE m.mcid = a.mcid
   AND m.snapshot_date >= a.upsellR_start_date
   AND m.snapshot_date <= a.upsellR_end_date
   AND a.upsell_reversal_flag > 0;
--- Fix cross-sell  Reversal 
+-- Fix cross-sell  Reversal
 UPDATE ryzlan.sst_ending_arr_tester_reversals AS m
 SET arr = round(
     CAST(
-      (sum_arr + a.crossellR_delta_arr) * ratio_arr as NUMERIC
+      (sum_arr + a.crossellR_delta_arr) * ratio_arr AS NUMERIC
     ),
     3
   ),
   sum_arr = round(
-    CAST(sum_arr + a.crossellR_delta_arr as NUMERIC),
+    CAST(sum_arr + a.crossellR_delta_arr AS NUMERIC),
     3
   ),
   baseline_arr_local_currency = round(
@@ -864,7 +880,7 @@ SET arr = round(
   ),
   sum_arr = round(
     CAST(
-      sum_arr + a.winback_downgrade_delta_arr as NUMERIC
+      sum_arr + a.winback_downgrade_delta_arr AS NUMERIC
     ),
     3
   ),
@@ -901,7 +917,7 @@ SET arr = round(
   ),
   sum_arr = round(
     CAST(
-      sum_arr + a.winback_downsell_delta_arr as NUMERIC
+      sum_arr + a.winback_downsell_delta_arr AS NUMERIC
     ),
     3
   ),
@@ -928,15 +944,15 @@ WHERE m.mcid = a.mcid
   AND m.snapshot_date >= a.winback_downsell_start_date
   AND m.snapshot_date <= a.winback_downsell_end_date
   AND a.winback_downsell_flag > 0;
--- Fix CPI Reversal 
+-- Fix CPI Reversal
 UPDATE ryzlan.sst_ending_arr_tester_reversals AS m
 SET arr = round(
     CAST(
-      (sum_arr + a.cpiR_delta_arr) * ratio_arr as NUMERIC
+      (sum_arr + a.cpiR_delta_arr) * ratio_arr AS NUMERIC
     ),
     3
   ),
-  sum_arr = round(CAST(sum_arr + a.cpiR_delta_arr as NUMERIC), 3),
+  sum_arr = round(CAST(sum_arr + a.cpiR_delta_arr AS NUMERIC), 3),
   baseline_arr_local_currency = round(
     CAST(
       (
@@ -968,7 +984,7 @@ CREATE TABLE ryzlan.sst_winbacks_missing_records AS (
       JOIN ryzlan.ending_arr_marker AS b ON a.mcid = b.mcid
       AND a.snapshot_date = b.winback_pull_back_date
   )
-  SELECT cast(
+  SELECT CAST(
       DATE_TRUNC('MONTH', custom_dates) + INTERVAL '1 MONTH' - INTERVAL '1 DAY' AS date
     ) AS snapshot_date,
     ultimate_parent_id,
@@ -999,7 +1015,6 @@ CREATE TABLE ryzlan.sst_winbacks_missing_records AS (
     segment,
     region,
     product_family,
-    sku,
     base_currency,
     cc_fx_rate,
     fx_date,
@@ -1013,26 +1028,25 @@ CREATE TABLE ryzlan.sst_winbacks_missing_records AS (
     modified_comments,
     cohort_actions,
     id,
-    reference_number,
     updated_product_group_manual,
     updated_product_solution_manual,
     icp_account,
     lob,
     lob_sub_category,
-    temp_product_solution_li,
-    temp_product_group_li,
-    temp_product_line_li,
     exists_in_customer_detail,
+    created_datetime,
+    sku,
+    base_currency_old,
+    baseline_arr_local_currency_old,
     industry,
     sub_industry,
     digital_maturity,
-    under_audit,
+    temp_product_solution_li,
+    temp_product_group_li,
     migration_from,
     migration_to,
-    acquire_product_group,
-    acquire_product_solution,
-    acquire_product_group_li,
-    acquire_product_solution_li,
+    under_audit,
+    reference_number,
     sum_arr,
     sum_baseline_arr_local_currency,
     ratio_arr,
@@ -1044,7 +1058,7 @@ CREATE TABLE ryzlan.sst_winbacks_missing_records AS (
     CROSS JOIN generate_series(
       b.winback_start_date,
       b.winback_end_date,
-      interval '1 month'
+      INTERVAL '1 month'
     ) AS custom_dates
 );
 INSERT INTO ryzlan.sst_ending_arr_tester_reversals (
@@ -1077,7 +1091,6 @@ INSERT INTO ryzlan.sst_ending_arr_tester_reversals (
     segment,
     region,
     product_family,
-    sku,
     base_currency,
     cc_fx_rate,
     fx_date,
@@ -1091,26 +1104,25 @@ INSERT INTO ryzlan.sst_ending_arr_tester_reversals (
     modified_comments,
     cohort_actions,
     id,
-    reference_number,
     updated_product_group_manual,
     updated_product_solution_manual,
     icp_account,
     lob,
     lob_sub_category,
-    temp_product_solution_li,
-    temp_product_group_li,
-    temp_product_line_li,
     exists_in_customer_detail,
+    created_datetime,
+    sku,
+    base_currency_old,
+    baseline_arr_local_currency_old,
     industry,
     sub_industry,
     digital_maturity,
-    under_audit,
+    temp_product_solution_li,
+    temp_product_group_li,
     migration_from,
     migration_to,
-    acquire_product_group,
-    acquire_product_solution,
-    acquire_product_group_li,
-    acquire_product_solution_li,
+    under_audit,
+    reference_number,
     sum_arr,
     sum_baseline_arr_local_currency,
     ratio_arr,
@@ -1146,7 +1158,6 @@ SELECT snapshot_date,
   segment,
   region,
   product_family,
-  sku,
   base_currency,
   cc_fx_rate,
   fx_date,
@@ -1160,26 +1171,25 @@ SELECT snapshot_date,
   modified_comments,
   cohort_actions,
   id,
-  reference_number,
   updated_product_group_manual,
   updated_product_solution_manual,
   icp_account,
   lob,
   lob_sub_category,
-  temp_product_solution_li,
-  temp_product_group_li,
-  temp_product_line_li,
   exists_in_customer_detail,
+  created_datetime,
+  sku,
+  base_currency_old,
+  baseline_arr_local_currency_old,
   industry,
   sub_industry,
   digital_maturity,
-  under_audit,
+  temp_product_solution_li,
+  temp_product_group_li,
   migration_from,
   migration_to,
-  acquire_product_group,
-  acquire_product_solution,
-  acquire_product_group_li,
-  acquire_product_solution_li,
+  under_audit,
+  reference_number,
   sum_arr,
   sum_baseline_arr_local_currency,
   ratio_arr,
@@ -1220,7 +1230,6 @@ SELECT snapshot_date,
   segment,
   region,
   product_family,
-  sku,
   base_currency,
   cc_fx_rate,
   fx_date,
@@ -1234,26 +1243,23 @@ SELECT snapshot_date,
   modified_comments,
   cohort_actions,
   id,
-  reference_number,
   updated_product_group_manual,
   updated_product_solution_manual,
   icp_account,
   lob,
   lob_sub_category,
-  temp_product_solution_li,
-  temp_product_group_li,
-  temp_product_line_li,
   exists_in_customer_detail,
+  created_datetime,
+  sku,
+  base_currency_old,
+  baseline_arr_local_currency_old,
   industry,
   sub_industry,
   digital_maturity,
-  under_audit,
+  temp_product_solution_li,
+  temp_product_group_li,
   migration_from,
   migration_to,
-  acquire_product_group,
-  acquire_product_solution,
-  acquire_product_group_li,
-  acquire_product_solution_li,
-  sum_arr,
-  ending_arr_comment
+  under_audit,
+  reference_number
 FROM ryzlan.sst_ending_arr_tester_reversals;

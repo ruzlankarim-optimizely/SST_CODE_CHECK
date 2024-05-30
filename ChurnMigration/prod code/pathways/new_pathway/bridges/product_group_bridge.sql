@@ -1,21 +1,20 @@
-ALTER TABLE sandbox.sst_product_group_bridge
-ADD pathways VARCHAR(255);
-ALTER TABLE sandbox.sst_product_group_bridge
-ADD unique_id VARCHAR(255);
+-- ALTER TABLE sandbox.sst_product_group_bridge
+-- ADD pathways VARCHAR(255);
+-- ALTER TABLE sandbox.sst_product_group_bridge
+-- ADD unique_id VARCHAR(255);
 DROP TABLE IF EXISTS sandbox.sst_product_group_bridge;
 CREATE TABLE sandbox.sst_product_group_bridge AS
 SELECT *,
   NULL AS pathways,
   NULL AS unique_id
 FROM ufdm.sst_product_bridge_product_group;
-SELECT *
-FROM sandbox.sst_product_group_bridge
-LIMIT 10;
-TRUNCATE TABLE sandbox.sst_product_group_bridge;
+-- SELECT *
+-- FROM sandbox.sst_product_group_bridge
+-- LIMIT 10;
+-- TRUNCATE TABLE sandbox.sst_product_group_bridge;
 --#############################################
 --CHURN MIGRATION
 --#############################################
-
 --SELECT * FROM arr_product_bridge_tmp WHERE mcid = 'f3909c43-53c3-e611-80f1-c4346bac4838' 
 ----
 Drop table if exists churn_migration_classifiers_pg;
@@ -35,7 +34,7 @@ CREATE temp table churn_migration_classifiers_pg as (
       rt.product_arr_change_ccfx as pg_arr_change,
       rt.product_arr_change_lcu as pg_arr_change_lcu,
       rt.product_bridge as pg_bridge
-    FROM sandbox.churn_migration_classifiers it3
+    FROM sandbox.churn_migration_classifiers2 it3
       left join sandbox.sst_product_group_bridge rt -- replace with product group bridge
       -- Here 
       on it3.evaluation_period = rt.evaluation_period
@@ -87,9 +86,9 @@ CREATE temp table churn_migration_classifiers_pg as (
           currency_code,
           prior_product_group,
           current_product_group,
-          prior_product_family_class,
-          current_product_family_class --          COALESCE (prior_product_group , current_product_group) 
-          --          ,COALESCE (prior_product_family_class,current_product_family_class)
+          prior_pathways,
+          current_pathways --          COALESCE (prior_product_group , current_product_group) 
+          --          ,COALESCE (prior_pathways,current_pathways)
         )
         when "Movement Type-PG" = '+'
         and "Movement Type-PF" = '+' then sum(product_arr_change_ccfx) filter(
@@ -100,9 +99,9 @@ CREATE temp table churn_migration_classifiers_pg as (
           currency_code,
           prior_product_group,
           current_product_group,
-          prior_product_family_class,
-          current_product_family_class --          COALESCE (prior_product_group ,current_product_group) 
-          --          ,COALESCE (prior_product_family_class,current_product_family_class)
+          prior_pathways,
+          current_pathways --          COALESCE (prior_product_group ,current_product_group) 
+          --          ,COALESCE (prior_pathways,current_pathways)
         )
         else null
       end as "Sum of Positive or Negative Movements-PG"
@@ -186,18 +185,15 @@ CREATE temp table churn_migration_classifiers_pg as (
         AND pg_bridge <> 'Flat'
         AND pg_bridge <> 'Price Uplift'
         AND pg_bridge <> 'New'
-        AND pg_bridge <> 'Churn'
-        THEN
-        --  THEN case
+        AND pg_bridge <> 'Churn' THEN --  THEN case
         --   when pg_bridge = 'New'
         --   or pg_bridge = 'Churn' then "Movement Classification"
         --   else 
         concat(
-            pg_bridge,
-            ' - ',
-            split_part("Movement Classification", ' - ', 2)
-          )
-        -- end
+          pg_bridge,
+          ' - ',
+          split_part("Movement Classification", ' - ', 2)
+        ) -- end
         else null
       end as "PG Migration: Classification",
       case
@@ -211,11 +207,11 @@ CREATE temp table churn_migration_classifiers_pg as (
     from initial_table_8
   ),
   adding_classification AS (
-  SELECT *,
-    split_part("PG Migration: Classification", ' -- ', 1) bridge_part,
-    split_part("PG Migration: Classification", ' -- ', 2) pathways_part
-  FROM initial_table_9
-),
+    SELECT *,
+      split_part("PG Migration: Classification", ' -- ', 1) bridge_part,
+      split_part("PG Migration: Classification", ' -- ', 2) pathways_part
+    FROM initial_table_9
+  ),
   double_classification_fix AS (
     select *,
       sum("PG Migration: Rolled Up Amount") over(
@@ -245,35 +241,35 @@ CREATE temp table churn_migration_classifiers_pg as (
         WHEN "PG Leftover: Classification" IS NOT NULL
         AND count_migrations > 1
         AND total_migration_amount_ccfx < pg_arr_change THEN round(
-        (pg_arr_change - total_migration_amount_ccfx) / count_migrations
-      )
-      ELSE NULL
+          (pg_arr_change - total_migration_amount_ccfx) / count_migrations
+        )
+        ELSE NULL
       END AS new_leftover_value_ccfx,
       CASE
         WHEN "PG Leftover: Classification" IS NOT NULL
         AND count_migrations > 1
         AND total_migration_amount_ccfx < pg_arr_change THEN round(
-  (pg_arr_change_lcu - total_migration_amount_lcu) / count_migrations
-)
-ELSE NULL
+          (pg_arr_change_lcu - total_migration_amount_lcu) / count_migrations
+        )
+        ELSE NULL
       END AS new_leftover_value_lcu,
       CASE
         WHEN count_migrations > 1
         AND total_migration_amount_ccfx > pg_arr_change THEN round(
-  (total_migration_amount_ccfx - pg_arr_change) *(
-    "PG Migration: Rolled Up Amount" / total_migration_amount_ccfx
-  )
-)
-ELSE NULL
+          (total_migration_amount_ccfx - pg_arr_change) *(
+            "PG Migration: Rolled Up Amount" / total_migration_amount_ccfx
+          )
+        )
+        ELSE NULL
       END AS subtracted_amount_ccfx,
       CASE
         WHEN count_migrations > 1
         AND total_migration_amount_ccfx > pg_arr_change THEN round(
-  (total_migration_amount_lcu - pg_arr_change_lcu) *(
-    "PG Migration: Rolled Up Amount LCU" / total_migration_amount_lcu
-  )
-)
-ELSE NULL
+          (total_migration_amount_lcu - pg_arr_change_lcu) *(
+            "PG Migration: Rolled Up Amount LCU" / total_migration_amount_lcu
+          )
+        )
+        ELSE NULL
       END AS subtracted_amount_lcu,
       CASE
         WHEN "PG Leftover: Classification" IS NOT NULL
@@ -293,56 +289,56 @@ ELSE NULL
         ELSE FALSE
       END AS double_migration_third_case
     FROM double_classification_fix
-  ) --  SELECT * FROM double_classification_marker    
+  ) --    SELECT * FROM double_classification_marker   
   SELECT evaluation_period,
     prior_period,
     current_period,
-    current_end_customer,
-    prior_end_customer,
-    mcid,
     current_master_customer_id,
     prior_master_customer_id,
+    mcid,
+    current_product_group,
+    prior_product_group,
     current_product_solution,
     prior_product_solution,
+    current_pathways,
+    prior_pathways,
+    current_end_customer,
+    prior_end_customer,
     currency_code,
-    prior_period_product_arr_usd_ccfx,
     current_period_product_arr_usd_ccfx,
+    prior_period_product_arr_usd_ccfx,
     product_arr_change_ccfx,
-    prior_period_product_arr_lcu,
     current_period_product_arr_lcu,
+    prior_period_product_arr_lcu,
     product_arr_change_lcu,
     product_bridge,
-    prior_product_group,
-    current_product_group,
-    current_product_family_class,
-    prior_product_family_class,
-    "Downgraded a Licenses  Product in Current Date",
-    "Downgraded a Everweb  Product in Current Date",
-    "Downgraded a Ektron  Product in Current Date",
-    "Downgraded a Personalized Find  Product in Current Date",
-    "Downgraded a Visitor Int  Product in Current Date",
-    "Churned a Licenses Product in Current Date",
-    "Churned a Everweb Product in Current Date",
-    "Churned a Ektron Product in Current Date",
-    "Churned a Personalized Find Product in Current Date",
-    "Churned a Visitor Int Product in Current Date",
-    "Added a Cloud Product in Current Date",
-    "Added a CMS Product in Current Date",
-    "Added a Content Graph Product in Current Date",
-    "Added a ODP Product in Current Date",
-    "Increased a Cloud Product in Current Date",
-    "Increased a CMS Product in Current Date",
-    "Increased a Content Graph Product in Current Date",
-    "Increased a ODP Product in Current Date",
-    "Cloud Product in Current Date with ARR",
-    "CMS  Product in Current Date with ARR",
-    "Content Graph Product in Current Date with ARR",
-    "ODP Product in Current Date with ARR",
-    "Licenses Product in Previous Date with ARR",
-    "Everweb Product in Previous Date with ARR",
-    "Ektron Product in Previous Date with ARR",
-    "Personalized Find Product in Previous Date with ARR",
-    "Visitor Int Product in Previous Date with ARR",
+    downgraded_license_in_current_date,
+    downgraded_everweb_in_current_date,
+    downgraded_ektron_in_current_date,
+    downgraded_find_in_current_date,
+    downgraded_vis_int_in_current_date,
+    churned_licenses_in_current_date,
+    churned_everweb_in_current_date,
+    churned_ektron_in_current_date,
+    churned_find_in_current_date,
+    churned_vis_int_in_current_date,
+    added_orchestrate_in_current_date,
+    added_monetize_in_current_date,
+    added_cms_in_current_date,
+    added_odp_in_current_date,
+    increased_orchestrate_in_current_date,
+    increased_cms_in_current_date,
+    increased_monetize_in_current_date,
+    increased_odp_in_current_date,
+    orchestrate_in_current_date_with_arr,
+    cms_in_current_date_with_arr,
+    monetize_in_current_date_with_arr,
+    odp_in_current_date_with_arr,
+    licenses_in_previous_date_with_arr,
+    everweb_in_previous_date_with_arr,
+    ektron_in_previous_date_with_arr,
+    find_in_previous_date_with_arr,
+    vis_int_in_previous_date_with_arr,
     "Movement Classification",
     "Movement Type-PF",
     pg_arr_change,
@@ -598,18 +594,30 @@ SELECT evaluation_period,
   prior_product_group,
   currency_code,
   prior_period_product_arr_usd_ccfx * abs(
-    "PG Migration: Rolled Up Amount" / product_arr_change_ccfx
+    "PG Migration: Rolled Up Amount" / CASE
+      WHEN product_arr_change_ccfx = 0 THEN 1
+      ELSE product_arr_change_ccfx
+    END
   ),
   current_period_product_arr_usd_ccfx * abs(
-    "PG Migration: Rolled Up Amount" / product_arr_change_ccfx
+    "PG Migration: Rolled Up Amount" / CASE
+      WHEN product_arr_change_ccfx = 0 THEN 1
+      ELSE product_arr_change_ccfx
+    END
   ),
   --  product_arr_change_ccfx ,
   "PG Migration: Rolled Up Amount",
   prior_period_product_arr_lcu * abs(
-    "PG Migration: Rolled Up Amount LCU" / product_arr_change_lcu
+    "PG Migration: Rolled Up Amount LCU" / CASE
+      WHEN product_arr_change_lcu = 0 THEN 1
+      ELSE product_arr_change_lcu
+    END
   ),
   current_period_product_arr_lcu * abs(
-    "PG Migration: Rolled Up Amount LCU" / product_arr_change_lcu
+    "PG Migration: Rolled Up Amount LCU" / CASE
+      WHEN product_arr_change_lcu = 0 THEN 1
+      ELSE product_arr_change_lcu
+    END
   ),
   "PG Migration: Rolled Up Amount LCU",
   --    product_bridge ,
@@ -674,19 +682,31 @@ SELECT evaluation_period,
   prior_product_group,
   currency_code,
   prior_period_product_arr_usd_ccfx * abs(
-    "PG Leftover: Rolled Up Amount" / product_arr_change_ccfx
+    "PG Leftover: Rolled Up Amount" / CASE
+      WHEN product_arr_change_ccfx = 0 THEN 1
+      ELSE product_arr_change_ccfx
+    END
   ),
   current_period_product_arr_usd_ccfx * abs(
-    "PG Leftover: Rolled Up Amount" / product_arr_change_ccfx
+    "PG Leftover: Rolled Up Amount" / CASE
+      WHEN product_arr_change_ccfx = 0 THEN 1
+      ELSE product_arr_change_ccfx
+    END
   ),
   --  product_arr_change_ccfx ,
   -- change this to default once and then to migrated value
   "PG Leftover: Rolled Up Amount",
   prior_period_product_arr_lcu * abs(
-    "PG Leftover: Rolled Up Amount LCU" / product_arr_change_lcu
+    "PG Leftover: Rolled Up Amount LCU" / CASE
+      WHEN product_arr_change_lcu = 0 THEN 1
+      ELSE product_arr_change_lcu
+    END
   ),
   current_period_product_arr_lcu * abs(
-    "PG Leftover: Rolled Up Amount LCU" / product_arr_change_lcu
+    "PG Leftover: Rolled Up Amount LCU" / CASE
+      WHEN product_arr_change_lcu = 0 THEN 1
+      ELSE product_arr_change_lcu
+    END
   ),
   "PG Leftover: Rolled Up Amount LCU",
   --    default_value_lcu ,

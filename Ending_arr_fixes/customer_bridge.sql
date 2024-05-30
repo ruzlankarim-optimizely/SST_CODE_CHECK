@@ -1,6 +1,6 @@
-create or replace function ryzlan.sp_populate_sst_customer_bridge(var_period text) returns void language plpgsql as $$ BEGIN RAISE NOTICE 'Running sst_customer_bridge for %...',
+CREATE OR REPLACE FUNCTION ryzlan.sp_populate_sst_customer_bridge_reversal_fix(var_period text) RETURNS void LANGUAGE plpgsql AS $function$ BEGIN RAISE NOTICE 'Running sst_customer_bridge for %...',
   var_period;
-DELETE from ryzlan.sst_customer_bridge
+DELETE from ryzlan.sst_customer_bridge_reversal_fix
 where evaluation_period = var_period;
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --SST customer Bridge
@@ -12,7 +12,7 @@ SELECT snapshot_date,
   a.base_currency as baseline_currency,
   sum(arr) AS arr_usd_ccfx,
   SUM(baseline_arr_local_currency) as arr_lcu
-FROM ryzlan.sst_adhoc a
+FROM ryzlan.sst_ending_arr_tester_final a
 WHERE 1 = 1
   AND snapshot_date = (
     SELECT prior_period
@@ -30,7 +30,7 @@ SELECT snapshot_date,
   a.base_currency as baseline_currency,
   sum(arr) AS arr_usd_ccfx,
   SUM(baseline_arr_local_currency) as arr_lcu
-FROM ryzlan.sst_adhoc a
+FROM ryzlan.sst_ending_arr_tester_final a
 WHERE 1 = 1
   AND snapshot_date = (
     SELECT current_period
@@ -134,132 +134,9 @@ create temp table arr_bridge_tmp as with arr_bridge AS (
 )
 select *
 from arr_bridge;
---#############################################
---Price Ramps
---#############################################
-drop table if exists temp_customer_bridge_price_ramps;
-create temp table temp_customer_bridge_price_ramps as with cte as (
-  select mcid,
-    snapshot_date,
-    sum(Price_Ramp) as PriceRamp_Value,
-    sum(Price_Ramp_lcu) as PriceRamp_Value_lcu
-  from sandbox_pd.Price_Ramps a
-    join ufdm_grey.periods b on a.snapshot_date = b.current_period --where b.evaluation_period = var_period
-  group by c_name,
-    mcid,
-    snapshot_date
-)
-select pr.evaluation_period,
-  pr.prior_period,
-  pr.current_period,
-  pr.mcid,
-  pr.prior_arr_usd_ccfx as prior_period_customer_arr_usd_ccfx,
-  pr.current_arr_usd_ccfx as current_period_customer_arr_usd_ccfx,
-  pr.customer_arr_change_ccfx,
-  pr.customer_bridge,
-  pr.customer_arr_change_lcu,
-  pr.prior_arr_lcu,
-  cte.PriceRamp_Value,
-  cte.PriceRamp_Value_lcu,
-  cte.snapshot_date
-from arr_bridge_tmp pr
-  inner join cte on pr.mcid = cte.mcid
-  and pr.current_period = cte.snapshot_date
-where pr.customer_bridge = 'Up Sell';
-update arr_bridge_tmp a
-set customer_bridge = 'Price Ramp'
-from temp_customer_bridge_price_ramps b
-where a.mcid = b.mcid
-  and a.evaluation_period = b.evaluation_period
-  and coalesce(a.customer_arr_change_ccfx::numeric, 0) <= coalesce(b.PriceRamp_Value::numeric, 0)
-  and a.customer_bridge = 'Up Sell';
-drop table if exists temp_Price_Ramp_split;
-create temp table temp_Price_Ramp_split as
-select distinct a.evaluation_period,
-  a.prior_period,
-  a.current_period,
-  a.current_master_customer_id,
-  a.prior_master_customer_id,
-  a.mcid,
-  a.name,
-  a.baseline_currency,
-  a.subsidiary_entity_name,
-  a.prior_arr_usd_ccfx as prior_period_customer_arr_usd_ccfx,
-  a.current_arr_usd_ccfx - b.PriceRamp_Value as current_period_customer_arr_usd_ccfx,
-  a.customer_arr_change_ccfx - b.PriceRamp_Value as customer_arr_change_ccfx,
-  a.prior_arr_lcu as prior_period_customer_arr_lcu,
-  a.current_arr_lcu - b.PriceRamp_Value_lcu as current_period_customer_lcu,
-  a.customer_arr_change_lcu - b.PriceRamp_Value_lcu as customer_arr_change_lcu,
-  a.customer_bridge
-from arr_bridge_tmp a
-  join temp_customer_bridge_price_ramps b on a.mcid = b.mcid
-  and a.evaluation_period = b.evaluation_period
-  and a.customer_bridge = b.customer_bridge
-where coalesce(a.customer_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
-union all
-select distinct a.evaluation_period,
-  a.prior_period,
-  a.current_period,
-  a.current_master_customer_id,
-  a.prior_master_customer_id,
-  a.mcid,
-  a.name,
-  a.baseline_currency,
-  a.subsidiary_entity_name,
-  '0'::numeric as prior_period_customer_arr_usd_ccfx,
-  b.PriceRamp_Value as current_period_customer_arr_usd_ccfx,
-  b.PriceRamp_Value as customer_arr_change_ccfx,
-  '0'::numeric as prior_period_customer_arr_lcu,
-  b.PriceRamp_Value_lcu as current_period_customer_lcu,
-  b.PriceRamp_Value_lcu as customer_arr_change_lcu,
-  'Price Ramp' as customer_bridge
-from arr_bridge_tmp a
-  join temp_customer_bridge_price_ramps b on a.mcid = b.mcid
-  and a.evaluation_period = b.evaluation_period
-  and a.customer_bridge = b.customer_bridge
-where coalesce(a.customer_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
-order by mcid;
-delete from arr_bridge_tmp a using temp_customer_bridge_price_ramps b
-where 1 = 1
-  and a.mcid = b.mcid
-  and a.evaluation_period = b.evaluation_period
-  and coalesce(a.customer_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
-  and a.customer_bridge = 'Up Sell';
-insert into arr_bridge_tmp (
-    evaluation_period,
-    prior_period,
-    current_period,
-    current_master_customer_id,
-    prior_master_customer_id,
-    mcid,
-    name,
-    baseline_currency,
-    subsidiary_entity_name,
-    prior_arr_usd_ccfx,
-    current_arr_usd_ccfx,
-    customer_arr_change_ccfx,
-    prior_arr_lcu,
-    current_arr_lcu,
-    customer_arr_change_lcu,
-    customer_bridge
-  )
-select evaluation_period,
-  prior_period,
-  current_period,
-  current_master_customer_id,
-  prior_master_customer_id,
-  mcid,
-  name,
-  baseline_currency,
-  subsidiary_entity_name,
-  prior_period_customer_arr_usd_ccfx,
-  current_period_customer_arr_usd_ccfx,
-  customer_arr_change_ccfx,
-  prior_period_customer_arr_lcu,
-  current_period_customer_lcu,
-  customer_arr_change_lcu,
-  customer_bridge
-from temp_Price_Ramp_split;
+drop table if exists prior_period_customer_arr;
+drop table if exists current_period_customer_arr;
+drop table if exists customer_level_arr;
 --#############################################
 --Downgrade
 --#############################################
@@ -277,7 +154,7 @@ select mcid,
   evaluation_period,
   sum(product_arr_change_ccfx) as product_arr_change_ccfx,
   sum(product_arr_change_lcu) as product_arr_change_lcu
-from sandbox.sst_product_group_bridge
+from ryzlan.sst_product_group_bridge_reversal_fix
 where 1 = 1
   and product_bridge in ('Downsell')
   and evaluation_period = var_period
@@ -404,6 +281,9 @@ select evaluation_period,
   customer_arr_change_lcu,
   customer_bridge --, winback_period_days, wip_flag
 from temp_cb_downsell_split;
+drop table if exists temp_pb_downsell;
+drop table if exists temp_pb_downsell_final;
+drop table if exists temp_cb_downsell_split;
 --############################
 --cross sell
 --############################
@@ -415,7 +295,7 @@ select mcid,
   evaluation_period,
   sum(product_arr_change_ccfx) as product_arr_change_ccfx,
   sum(product_arr_change_lcu) as product_arr_change_lcu
-from sandbox.sst_product_group_bridge 
+from ryzlan.sst_product_group_bridge_reversal_fix
 where 1 = 1
   and product_bridge in ('Cross-sell')
   and evaluation_period = var_period
@@ -542,6 +422,9 @@ select evaluation_period,
   customer_arr_change_lcu,
   customer_bridge --, winback_period_days, wip_flag
 from temp_cb_crosssell_split;
+drop table if exists temp_pb_crosssell;
+drop table if exists temp_pb_crosssell_final;
+drop table if exists temp_cb_crosssell_split;
 --#############################################
 --CPI
 --#############################################
@@ -587,7 +470,7 @@ create temp table arr_churned_products_tmp AS with temp as (
       order by b.snapshot_date desc
     ) as rnk
   from arr_new_products_tmp a
-    join ryzlan.sst_adhoc b on a.mcid = b.mcid
+    join ryzlan.sst_ending_arr_tester_final b on a.mcid = b.mcid
     and a.baseline_currency = b.base_currency
   where b.snapshot_date < a.snapshot_date
     and b.overage_flag ilike '%N%'
@@ -609,8 +492,8 @@ select *,
       when extract(
         day
         from snapshot_date_at_new::timestamp - (snapshot_date + INTERVAL '1 month')::date
-      ) <= 90 then 'Winback ST'
-      else 'Winback LT'
+      ) <= 90 then 'Winback'
+      else 'Winback'
     end
   end as customer_bridge_new,
   arr_at_new - arr_at_churn as arr_diff,
@@ -626,7 +509,7 @@ where rnk = 1
     day
     from snapshot_date_at_new::timestamp - (snapshot_date + INTERVAL '1 month')::date
   ) < 186;
-INSERT INTO ryzlan.sst_customer_bridge (
+INSERT INTO ryzlan.sst_customer_bridge_reversal_fix (
     evaluation_period,
     prior_period,
     current_period,
@@ -686,8 +569,8 @@ SELECT a.evaluation_period,
   end as customer_arr_change_lcu,
   case
     when b.mcid is not null then case
-      when b.days_diff <= 90 then 'Winback ST'
-      else 'Winback LT'
+      when b.days_diff <= 90 then 'Winback'
+      else 'Winback'
     end
     else a.customer_bridge
   end as customer_bridge,
@@ -740,7 +623,7 @@ total_arr as (
     a.snapshot_date,
     a.subsidiary_entity_name,
     sum(a.arr) as total_arr
-  from ryzlan.sst_adhoc a
+  from ryzlan.sst_ending_arr_tester_final a
     join mcid_list b on a.mcid = b.master_customer_id
     and a.snapshot_date in (
       SELECT prior_period
@@ -768,11 +651,15 @@ from sub_entity
 where rnk = 1;
 RAISE NOTICE 'Running sub entity update on sst customer bridge...';
 create index nci_sub_entity_tmp_mcid on sub_entity_tmp(mcid);
-update ryzlan.sst_customer_bridge a
+update ryzlan.sst_customer_bridge_reversal_fix a
 set subsidiary_entity_name = b.subsidiary_entity_name
 from sub_entity_tmp b
 where a.mcid = b.mcid
   and a.evaluation_period = var_period;
+drop table if exists arr_new_products_tmp;
+drop table if exists arr_churned_products_tmp;
+drop table if exists sub_entity_tmp;
+drop table if exists arr_bridge_tmp;
 --###########################################
 --WINBACK Downgrade
 --###########################################
@@ -785,7 +672,7 @@ create temp table temp_win_downgrade_upsell as with temp1 as (
     a.current_period as snapshot_date_at_upsell,
     a.customer_arr_change_ccfx as Upsell_crosssell_arr,
     a.customer_arr_change_lcu as Upsell_crosssell_arr_lcu
-  from ryzlan.sst_customer_bridge a
+  from ryzlan.sst_customer_bridge_reversal_fix a
   where 1 = 1
     and a.customer_bridge in ('Cross-sell', 'Up Sell')
     and a.evaluation_period = var_period
@@ -809,7 +696,7 @@ temp2 as (
       order by b.current_period desc,
         a.snapshot_date_at_upsell
     ) as rnk
-  from ryzlan.sst_customer_bridge b
+  from ryzlan.sst_customer_bridge_reversal_fix b
     join temp1 a on a.mcid = b.mcid
   where 1 = 1
     and b.customer_bridge in ('Downgrade', 'Downsell')
@@ -849,7 +736,7 @@ select a.mcid,
   b.Downgrade_downsell_arr_lcu,
   b.Downgrade_evaluation_period,
   b.Downgrade_bridge
-from ryzlan.sst_customer_bridge a,
+from ryzlan.sst_customer_bridge_reversal_fix a,
   temp2 b
 where 1 = 1
   and a.mcid = b.mcid
@@ -930,7 +817,7 @@ downgrade_downsell_total as (
       when count(distinct a.customer_bridge) > 1 then 1
       else 0
     end as Downgrade_Downsell_both_exists
-  from ryzlan.sst_customer_bridge a
+  from ryzlan.sst_customer_bridge_reversal_fix a
     join (
       select distinct mcid,
         Downgrade_evaluation_period as Downgrade_evaluation_period,
@@ -1319,7 +1206,7 @@ select a.evaluation_period,
   a.customer_bridge,
   a.winback_period_days,
   a.wip_flag
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_windowngrade_final_curated b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -1345,7 +1232,7 @@ select a.evaluation_period,
   a.customer_bridge,
   a.winback_period_days,
   a.wip_flag
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_windowngrade_final_curated b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -1371,7 +1258,7 @@ select distinct a.evaluation_period,
   'Win back Downgrade' as customer_bridge,
   null as winback_period_days,
   null as wip_flag --select b.*
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_windowngrade_final_curated b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -1397,9 +1284,9 @@ select distinct a.evaluation_period,
   'Win back Downsell' as customer_bridge,
   null as winback_period_days,
   null as wip_flag --select b.*
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_windowngrade_final_curated b on a.mcid = b.mcid
-  and a.evaluation_period = b.evaluation_period --left join ryzlan.sst_customer_bridge c on c.mcid = a.mcid and c.evaluation_period = a.evaluation_period and c.customer_bridge = 'Up Sell'
+  and a.evaluation_period = b.evaluation_period --left join ryzlan.sst_customer_bridge_reversal_fix c on c.mcid = a.mcid and c.evaluation_period = a.evaluation_period and c.customer_bridge = 'Up Sell'
 where b.Split_record = 1
   and a.evaluation_period = var_period --and a.customer_bridge in ('Cross-sell')
   --and c.mcid is null
@@ -1407,14 +1294,14 @@ where b.Split_record = 1
   and a.customer_bridge <> 'Flat'
 order by mcid;
 RAISE NOTICE 'Running WINBACK Downgrade update on sst customer bridge 4...';
-delete from ryzlan.sst_customer_bridge a using temp_windowngrade_final_curated b
+delete from ryzlan.sst_customer_bridge_reversal_fix a using temp_windowngrade_final_curated b
 where 1 = 1
   and a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
   and b.Split_record = 1
   and a.evaluation_period = var_period -- and a.customer_bridge = b.customer_bridge
   and a.customer_bridge in ('Cross-sell', 'Up Sell');
-insert into ryzlan.sst_customer_bridge (
+insert into ryzlan.sst_customer_bridge_reversal_fix (
     evaluation_period,
     prior_period,
     current_period,
@@ -1453,18 +1340,22 @@ select evaluation_period,
   winback_period_days,
   wip_flag
 from temp_windowngrade_split;
+drop table if exists temp_win_downgrade_upsell;
+drop table if exists temp_windowngrade_final;
+drop table if exists temp_windowngrade_final_curated;
+drop table if exists temp_windowngrade_split;
 --###########################################
 --CPI Reversal
 --###########################################
 RAISE NOTICE 'Running CPI Reversal update on sst customer bridge...';
 drop table if exists temp_CPI_Reversal;
-create table temp_CPI_Reversal as with temp1 as (
+create temp table temp_CPI_Reversal as with temp1 as (
   select a.mcid,
     a.customer_bridge,
     a.evaluation_period as evaluation_period_at_Downgrade_Churn,
     p.current_period as snapshot_date_at_Downgrade_Churn,
     customer_arr_change_ccfx as current_arr
-  from ryzlan.sst_customer_bridge a
+  from ryzlan.sst_customer_bridge_reversal_fix a
     join ufdm_grey.periods p on a.evaluation_period = p.evaluation_period
   where 1 = 1
     and a.evaluation_period = var_period
@@ -1491,7 +1382,7 @@ temp2 as (
       order by b.current_period desc,
         a.snapshot_date_at_Downgrade_Churn
     ) as rnk
-  from ryzlan.sst_customer_bridge b
+  from ryzlan.sst_customer_bridge_reversal_fix b
     join temp1 a on a.mcid = b.mcid
   where 1 = 1
     and b.customer_bridge = 'Price Uplift'
@@ -1548,13 +1439,13 @@ select distinct a.mcid,
   coalesce(c.prior_period_customer_arr_usd_ccfx, 0) as current_period_customer_arr_usd_ccfx_CPIR,
   coalesce(c.current_period_customer_lcu, 0) as prior_period_customer_arr_lcu_CPIR,
   coalesce(c.prior_period_customer_arr_lcu, 0) as current_period_customer_lcu_CPIR
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp2 b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period_at_Downgrade_Churn
   left join (
     select suba.*,
       subb.current_period as snapshot_Date
-    from ryzlan.sst_customer_bridge suba
+    from ryzlan.sst_customer_bridge_reversal_fix suba
       join ufdm_grey.periods subb on suba.evaluation_period = subb.evaluation_period
   ) c on a.mcid = c.mcid
   and c.customer_bridge = 'Price Uplift Reversal'
@@ -1580,7 +1471,7 @@ create temporary table temp_cpi_reversal_final_curated as with cpi_total as (
     abs(sum(customer_arr_change_ccfx)) as CPI_arr,
     abs(sum(customer_arr_change_lcu)) as CPI_arr_lcu,
     abs(sum(customer_arr_change_lcu)) as CPI_total_lcu
-  from ryzlan.sst_customer_bridge a
+  from ryzlan.sst_customer_bridge_reversal_fix a
     join (
       select distinct mcid,
         cpi_evaluation_period,
@@ -1641,7 +1532,7 @@ downgrade_downsell_churn_total as (
       when count(distinct a.customer_bridge) > 1 then 1
       else 0
     end as Downgrade_Downsell_churn_both_exists
-  from ryzlan.sst_customer_bridge a
+  from ryzlan.sst_customer_bridge_reversal_fix a
     join (
       select distinct mcid,
         evaluation_period
@@ -1779,7 +1670,7 @@ select a.evaluation_period,
   0 as current_period_customer_lcu,
   - Downgrade_arr_new_lcu as customer_arr_change_lcu,
   a.customer_bridge
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_cpi_reversal_final_curated b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -1804,7 +1695,7 @@ select a.evaluation_period,
   0 as current_period_customer_lcu,
   - b.Downsell_arr_new_lcu as customer_arr_change_lcu,
   a.customer_bridge
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_cpi_reversal_final_curated b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -1829,7 +1720,7 @@ select a.evaluation_period,
   0 as current_period_customer_lcu,
   - b.Churn_arr_new_lcu as customer_arr_change_lcu,
   a.customer_bridge
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_cpi_reversal_final_curated b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -1854,7 +1745,7 @@ select distinct a.evaluation_period,
   cpi_reversal_arr_new_lcu as current_period_customer_lcu,
   - cpi_reversal_arr_new_lcu as customer_arr_change_lcu,
   'Price Uplift Reversal' as customer_bridge
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_cpi_reversal_final_curated b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -1862,14 +1753,14 @@ where b.Split_record = 1
   and b.cpi_reversal_arr_new > 0
   and a.customer_bridge <> 'Flat'
 order by mcid;
-delete from ryzlan.sst_customer_bridge a using temp_cpi_reversal_final_curated b
+delete from ryzlan.sst_customer_bridge_reversal_fix a using temp_cpi_reversal_final_curated b
 where 1 = 1
   and a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
   and b.Split_record = 1
   and a.evaluation_period = var_period
   and a.customer_bridge in ('Downgrade', 'Churn', 'Downsell');
-insert into ryzlan.sst_customer_bridge (
+insert into ryzlan.sst_customer_bridge_reversal_fix (
     evaluation_period,
     prior_period,
     current_period,
@@ -1905,6 +1796,9 @@ select evaluation_period,
   customer_bridge
 from temp_cpireversal_split;
 end if;
+drop table if exists temp_CPI_Reversal;
+drop table if exists temp_cpireversal_final;
+drop table if exists temp_cpireversal_split;
 --###########################################
 --Upsell Reversal
 --###########################################
@@ -1917,7 +1811,7 @@ create temp table temp_cross_upsell_reversal as with temp1 as (
     b.current_period as snapshot_date_at_Downgrade_Downsell,
     a.customer_arr_change_ccfx as Downgrade_Downsell_arr,
     a.customer_arr_change_lcu as Downgrade_Downsell_arr_lcu
-  from ryzlan.sst_customer_bridge a
+  from ryzlan.sst_customer_bridge_reversal_fix a
     join ufdm_grey.periods b on a.evaluation_period = b.evaluation_period
   where 1 = 1 --and a.customer_bridge in ('Downgrade','Downsell')
     and a.customer_bridge in ('Downgrade', 'Downsell', 'Churn')
@@ -1942,7 +1836,7 @@ temp2 as (
       order by b.current_period desc,
         a.snapshot_date_at_Downgrade_Downsell
     ) as rnk
-  from ryzlan.sst_customer_bridge b
+  from ryzlan.sst_customer_bridge_reversal_fix b
     join temp1 a on a.mcid = b.mcid
   where 1 = 1
     and b.customer_bridge in ('Cross-sell', 'Up Sell')
@@ -1987,7 +1881,7 @@ select a.mcid,
   b.evaluation_period_at_Downgrade_Downsell,
   b.Upsell_crosssell_arr_lcu,
   b.Downgrade_Downsell_arr_lcu
-from ryzlan.sst_customer_bridge a,
+from ryzlan.sst_customer_bridge_reversal_fix a,
   temp2 b
 where 1 = 1
   and a.mcid = b.mcid
@@ -2034,7 +1928,7 @@ create temporary table temp_cross_upsell_reversal_final_curated as with cross_up
       when count(distinct a.customer_bridge) > 1 then 1
       else 0
     end as cross_upsell_both_exists
-  from ryzlan.sst_customer_bridge a
+  from ryzlan.sst_customer_bridge_reversal_fix a
     join (
       select distinct mcid,
         cross_upsell_evaluation_period,
@@ -2102,7 +1996,7 @@ downgrade_downsell_total as (
         else 0
       end
     ) as Churn_exists
-  from ryzlan.sst_customer_bridge a
+  from ryzlan.sst_customer_bridge_reversal_fix a
     join (
       select distinct mcid,
         evaluation_period_at_Downgrade_Downsell,
@@ -2552,7 +2446,7 @@ create temporary table temp_cross_upsell_reversal_final_curated_churn as with cr
       when count(distinct a.customer_bridge) > 1 then 1
       else 0
     end as cross_upsell_both_exists
-  from ryzlan.sst_customer_bridge a
+  from ryzlan.sst_customer_bridge_reversal_fix a
     join (
       select distinct mcid,
         cross_upsell_evaluation_period,
@@ -2591,7 +2485,7 @@ Churn_total as (
         else 0
       end
     ) as Churn_exists
-  from ryzlan.sst_customer_bridge a
+  from ryzlan.sst_customer_bridge_reversal_fix a
     join (
       select distinct mcid,
         evaluation_period_at_Downgrade_Downsell,
@@ -2795,7 +2689,7 @@ select a.evaluation_period,
   a.customer_bridge,
   a.winback_period_days,
   a.wip_flag
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_cross_upsell_reversal_final_curated_churn b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -2821,7 +2715,7 @@ select a.evaluation_period,
   a.customer_bridge,
   a.winback_period_days,
   a.wip_flag
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_cross_upsell_reversal_final_curated_churn b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -2847,7 +2741,7 @@ select a.evaluation_period,
   a.customer_bridge,
   a.winback_period_days,
   a.wip_flag
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_cross_upsell_reversal_final_curated_churn b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -2873,7 +2767,7 @@ select distinct a.evaluation_period,
   'Up Sell Reversal' as customer_bridge,
   null as winback_period_days,
   null as wip_flag --select b.*
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_cross_upsell_reversal_final_curated_churn b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -2899,7 +2793,7 @@ select distinct a.evaluation_period,
   'Cross-sell Reversal' as customer_bridge,
   null as winback_period_days,
   null as wip_flag --select b.*
-from ryzlan.sst_customer_bridge a
+from ryzlan.sst_customer_bridge_reversal_fix a
   join temp_cross_upsell_reversal_final_curated_churn b on a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
 where b.Split_record = 1
@@ -2908,14 +2802,14 @@ where b.Split_record = 1
   and a.customer_bridge <> 'Flat'
 order by mcid;
 RAISE NOTICE 'Running cross/Upsell reversal update on sst customer bridge 4...';
-delete from ryzlan.sst_customer_bridge a using temp_cross_upsell_reversal_final_curated_churn b
+delete from ryzlan.sst_customer_bridge_reversal_fix a using temp_cross_upsell_reversal_final_curated_churn b
 where 1 = 1
   and a.mcid = b.mcid
   and a.evaluation_period = b.evaluation_period
   and b.Split_record = 1
   and a.evaluation_period = var_period -- and a.customer_bridge = b.customer_bridge
   and a.customer_bridge in ('Downgrade', 'Downsell', 'Churn');
-insert into ryzlan.sst_customer_bridge (
+insert into ryzlan.sst_customer_bridge_reversal_fix (
     evaluation_period,
     prior_period,
     current_period,
@@ -2955,41 +2849,148 @@ select evaluation_period,
   wip_flag
 from temp_cross_upsell_reversal_split;
 end if;
+drop table if exists temp_cross_upsell_reversal;
+drop table if exists temp_cross_upsell_reversal_final;
+drop table if exists temp_cross_upsell_reversal_final_curated;
+drop table if exists temp_cross_upsell_reversal_final_curated_churn;
+drop table if exists temp_cross_upsell_reversal_split;
+--#############################################
+--Price Ramps
+--#############################################
+drop table if exists temp_customer_bridge_price_ramps;
+create temp table temp_customer_bridge_price_ramps as with cte as (
+  select mcid,
+    snapshot_date,
+    b.evaluation_period,
+    sum(Price_Ramp) as PriceRamp_Value,
+    sum(Price_Ramp_lcu) as PriceRamp_Value_lcu
+  from sandbox_pd.Price_Ramps a
+    join ufdm_grey.periods b on a.snapshot_date = b.current_period
+  where b.evaluation_period = var_period
+  group by c_name,
+    mcid,
+    snapshot_date,
+    evaluation_period
+)
+select pr.evaluation_period,
+  pr.prior_period,
+  pr.current_period,
+  pr.mcid,
+  pr.prior_period_customer_arr_usd_ccfx as prior_period_customer_arr_usd_ccfx,
+  pr.current_period_customer_arr_usd_ccfx as current_period_customer_arr_usd_ccfx,
+  pr.customer_arr_change_ccfx,
+  pr.customer_bridge,
+  pr.customer_arr_change_lcu,
+  pr.prior_period_customer_arr_lcu,
+  cte.PriceRamp_Value,
+  cte.PriceRamp_Value_lcu,
+  cte.snapshot_date
+from ryzlan.sst_customer_bridge_reversal_fix pr
+  inner join cte on pr.mcid = cte.mcid
+  and pr.evaluation_period = cte.evaluation_period
+where pr.customer_bridge = 'Up Sell';
+update ryzlan.sst_customer_bridge_reversal_fix a
+set customer_bridge = 'Price Ramp'
+from temp_customer_bridge_price_ramps b
+where a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and coalesce(a.customer_arr_change_ccfx::numeric, 0) <= coalesce(b.PriceRamp_Value::numeric, 0)
+  and a.customer_bridge = 'Up Sell';
+drop table if exists temp_Price_Ramp_split;
+create temp table temp_Price_Ramp_split as
+select distinct a.evaluation_period,
+  a.prior_period,
+  a.current_period,
+  a.current_master_customer_id,
+  a.prior_master_customer_id,
+  a.mcid,
+  a.name,
+  a.baseline_currency,
+  a.subsidiary_entity_name,
+  a.prior_period_customer_arr_usd_ccfx as prior_period_customer_arr_usd_ccfx,
+  a.current_period_customer_arr_usd_ccfx - b.PriceRamp_Value as current_period_customer_arr_usd_ccfx,
+  a.customer_arr_change_ccfx - b.PriceRamp_Value as customer_arr_change_ccfx,
+  a.prior_period_customer_arr_lcu as prior_period_customer_arr_lcu,
+  a.current_period_customer_lcu - b.PriceRamp_Value_lcu as current_period_customer_lcu,
+  a.customer_arr_change_lcu - b.PriceRamp_Value_lcu as customer_arr_change_lcu,
+  a.customer_bridge
+from ryzlan.sst_customer_bridge_reversal_fix a
+  join temp_customer_bridge_price_ramps b on a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and a.customer_bridge = b.customer_bridge
+where coalesce(a.customer_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
+union all
+select distinct a.evaluation_period,
+  a.prior_period,
+  a.current_period,
+  a.current_master_customer_id,
+  a.prior_master_customer_id,
+  a.mcid,
+  a.name,
+  a.baseline_currency,
+  a.subsidiary_entity_name,
+  '0'::numeric as prior_period_customer_arr_usd_ccfx,
+  b.PriceRamp_Value as current_period_customer_arr_usd_ccfx,
+  b.PriceRamp_Value as customer_arr_change_ccfx,
+  '0'::numeric as prior_period_customer_arr_lcu,
+  b.PriceRamp_Value_lcu as current_period_customer_lcu,
+  b.PriceRamp_Value_lcu as customer_arr_change_lcu,
+  'Price Ramp' as customer_bridge
+from ryzlan.sst_customer_bridge_reversal_fix a
+  join temp_customer_bridge_price_ramps b on a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and a.customer_bridge = b.customer_bridge
+where coalesce(a.customer_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
+order by mcid;
+delete from ryzlan.sst_customer_bridge_reversal_fix a using temp_customer_bridge_price_ramps b
+where 1 = 1
+  and a.mcid = b.mcid
+  and a.evaluation_period = b.evaluation_period
+  and coalesce(a.customer_arr_change_ccfx::numeric, 0) > coalesce(b.PriceRamp_Value::numeric, 0)
+  and a.customer_bridge = 'Up Sell';
+insert into ryzlan.sst_customer_bridge_reversal_fix (
+    evaluation_period,
+    prior_period,
+    current_period,
+    current_master_customer_id,
+    prior_master_customer_id,
+    mcid,
+    name,
+    baseline_currency,
+    subsidiary_entity_name,
+    prior_period_customer_arr_usd_ccfx,
+    current_period_customer_arr_usd_ccfx,
+    customer_arr_change_ccfx,
+    prior_period_customer_arr_lcu,
+    current_period_customer_lcu,
+    customer_arr_change_lcu,
+    customer_bridge
+  )
+select evaluation_period,
+  prior_period,
+  current_period,
+  current_master_customer_id,
+  prior_master_customer_id,
+  mcid,
+  name,
+  baseline_currency,
+  subsidiary_entity_name,
+  prior_period_customer_arr_usd_ccfx,
+  current_period_customer_arr_usd_ccfx,
+  customer_arr_change_ccfx,
+  prior_period_customer_arr_lcu,
+  current_period_customer_lcu,
+  customer_arr_change_lcu,
+  customer_bridge
+from temp_Price_Ramp_split;
+drop table if exists temp_customer_bridge_price_ramps;
+drop table if exists temp_Price_Ramp_split;
 RAISE NOTICE 'Running rounding errors update on sst customer bridge...';
 --rounding errors updates
-update ryzlan.sst_customer_bridge
+update ryzlan.sst_customer_bridge_reversal_fix
 set customer_bridge = 'Rounding'
 where customer_bridge = 'Flat'
   and coalesce(customer_arr_change_ccfx, 0) <> 0
   and evaluation_period = var_period;
--- drop all temp tables
-drop table if exists prior_period_customer_arr;
-drop table if exists current_period_customer_arr;
-drop table if exists customer_level_arr;
-drop table if exists account;
-drop table if exists arr_bridge_tmp;
-drop table if exists temp_cross_sell_data;
-drop table if exists temp_pb_crosssell;
-drop table if exists temp_pb_crosssell_final;
-drop table if exists temp_cb_crosssell_split;
-drop table if exists temp_downsell_data;
-drop table if exists temp_pb_downsell;
-drop table if exists temp_pb_downsell_final;
-drop table if exists temp_cb_downsell_split;
-drop table if exists temp_customer_bridge_price_ramps;
-drop table if exists temp_Price_Ramp_split;
-drop table if exists arr_new_products_tmp;
-drop table if exists arr_churned_products_tmp;
-drop table if exists sub_entity_tmp;
-drop table if exists temp_win_downgrade_upsell;
-drop table if exists temp_windowngrade_final;
-drop table if exists temp_windowngrade_final_curated;
-drop table if exists temp_windowngrade_split;
-drop table if exists temp_CPI_Reversal;
-drop table if exists temp_cpireversal_final;
-drop table if exists temp_cpireversal_split;
-drop table if exists temp_downgrade_upsell;
-drop table if exists temp_upselldowngrade_final;
-drop table if exists temp_upselldowngrade_split;
 End;
-$$;
+$function$;

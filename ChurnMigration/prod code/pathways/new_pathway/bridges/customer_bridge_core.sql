@@ -1,8 +1,13 @@
-DROP TABLE IF EXISTS sandbox.sst_customer_bridge_cm;
-CREATE TABLE sandbox.sst_customer_bridge_cm AS
+DROP TABLE IF EXISTS sandbox.sst_customer_bridge_cm_core;
+CREATE TABLE sandbox.sst_customer_bridge_cm_core AS
 SELECT *,
   NULL AS pathways
-FROM ufdm.sst_customer_bridge scb;
+FROM ufdm.sst_customer_bridge_core scb;
+--#############################################
+--CHURN MIGRATION
+--#############################################
+--SELECT * FROM arr_product_bridge_tmp WHERE mcid = 'f3909c43-53c3-e611-80f1-c4346bac4838' 
+----
 --#############################################
 --CHURN MIGRATION
 --#############################################
@@ -26,7 +31,7 @@ CREATE temp table churn_migration_classifiers_pg as (
       rt.customer_arr_change_lcu as pg_arr_change_lcu,
       rt.customer_bridge as pg_bridge
     FROM sandbox.churn_migration_classifiers2 it3
-      left join sandbox.sst_customer_bridge_cm rt -- replace with product group bridge
+      left join sandbox.sst_customer_bridge_cm_core rt -- replace with product group bridge
       -- Here 
       on it3.evaluation_period = rt.evaluation_period
       and it3.mcid = rt.mcid
@@ -40,8 +45,7 @@ CREATE temp table churn_migration_classifiers_pg as (
         'Downsell',
         'Price Uplift',
         'Downgrade'
-      ) --    AND it3.mcid =   '1d602838-edd7-e611-80f1-c4346bad92d0'  
-      --    AND it3.evaluation_period  =  '2020M01'
+      ) --                  AND it3.mcid =   '4e128cce-793a-e811-8124-70106faab5f1'  AND it3.evaluation_period  =  '2023M10'
       --         'f677c904-1faa-db11-8952-0018717a8c82'
       --         
       --      AND it3.evaluation_period = var_period   
@@ -224,9 +228,9 @@ CREATE temp table churn_migration_classifiers_pg as (
         AND count_migrations > 1
         AND abs(total_migration_amount_ccfx) < abs(pg_arr_change) THEN round(
           (pg_arr_change - total_migration_amount_ccfx) /case
-          when count_migrations = 0 then 1
-          else count_migrations
-        end
+            when count_migrations = 0 then 1
+            else count_migrations
+          end
         )
         ELSE NULL
       END AS new_leftover_value_ccfx,
@@ -283,97 +287,99 @@ CREATE temp table churn_migration_classifiers_pg as (
         ELSE FALSE
       END AS double_migration_third_case
     FROM double_classification_fix
-  ) --  SELECT * FROM double_classification_marker
+  ) --      SELECT 
+  --      *
+  --      FROM double_classification_marker    
   SELECT evaluation_period,
-    prior_period,
-    current_period,
-    current_master_customer_id,
-    prior_master_customer_id,
-    mcid,
-    current_product_group,
-    prior_product_group,
-    current_product_solution,
-    prior_product_solution,
-    current_pathways,
-    prior_pathways,
-    current_end_customer,
-    prior_end_customer,
-    currency_code,
-    current_period_product_arr_usd_ccfx,
-    prior_period_product_arr_usd_ccfx,
-    product_arr_change_ccfx,
-    current_period_product_arr_lcu,
-    prior_period_product_arr_lcu,
-    product_arr_change_lcu,
-    product_bridge,
-    downgraded_license_in_current_date,
-    downgraded_everweb_in_current_date,
-    downgraded_ektron_in_current_date,
-    downgraded_find_in_current_date,
-    downgraded_vis_int_in_current_date,
-    churned_licenses_in_current_date,
-    churned_everweb_in_current_date,
-    churned_ektron_in_current_date,
-    churned_find_in_current_date,
-    churned_vis_int_in_current_date,
-    added_orchestrate_in_current_date,
-    added_monetize_in_current_date,
-    added_cms_in_current_date,
-    added_odp_in_current_date,
-    increased_orchestrate_in_current_date,
-    increased_cms_in_current_date,
-    increased_monetize_in_current_date,
-    increased_odp_in_current_date,
-    orchestrate_in_current_date_with_arr,
-    cms_in_current_date_with_arr,
-    monetize_in_current_date_with_arr,
-    odp_in_current_date_with_arr,
-    licenses_in_previous_date_with_arr,
-    everweb_in_previous_date_with_arr,
-    ektron_in_previous_date_with_arr,
-    find_in_previous_date_with_arr,
-    vis_int_in_previous_date_with_arr,
-    "Movement Classification",
-    "Movement Type-PF",
-    pg_arr_change,
-    pg_arr_change_lcu,
-    pg_bridge,
-    "Movement Type-PG",
-    "Sum of Positive or Negative Movements-PG",
-    "Min/Max PF Level movement",
-    CASE
-      WHEN double_migration_third_case = TRUE THEN "PG Migration: Rolled Up Amount" - subtracted_amount_ccfx
-      ELSE "PG Migration: Rolled Up Amount"
-    END AS "PG Migration: Rolled Up Amount",
-    CASE
-      WHEN double_migration_second_case = TRUE THEN new_leftover_value_ccfx
-      ELSE CASE
-        WHEN double_classification_first_case_flag = TRUE
-        OR double_migration_third_case = TRUE THEN NULL
-        ELSE "PG Leftover: Rolled Up Amount"
-      END
-    END AS "PG Leftover: Rolled Up Amount",
-    CASE
-      WHEN double_migration_third_case = TRUE THEN "PG Migration: Rolled Up Amount LCU" - subtracted_amount_lcu
-      ELSE "PG Migration: Rolled Up Amount LCU"
-    END AS "PG Migration: Rolled Up Amount LCU",
-    CASE
-      WHEN double_migration_second_case = TRUE THEN new_leftover_value_lcu
-      ELSE CASE
-        WHEN double_classification_first_case_flag = TRUE
-        OR double_migration_third_case = TRUE THEN NULL
-        ELSE "PG Leftover: Rolled Up Amount LCU"
-      END
-    END AS "PG Leftover: Rolled Up Amount LCU",
-    "PG Migration: Classification",
-    CASE
-      WHEN double_migration_second_case = TRUE THEN "PG Leftover: Classification"
-      ELSE CASE
-        WHEN double_classification_first_case_flag = TRUE
-        OR double_migration_third_case = TRUE THEN NULL
-        ELSE "PG Leftover: Classification"
-      END
-    END AS "PG Leftover: Classification"
+prior_period,
+current_period,
+current_master_customer_id,
+prior_master_customer_id,
+mcid,
+current_product_group,
+prior_product_group,
+current_product_solution,
+prior_product_solution,
+current_pathways,
+prior_pathways,
+current_end_customer,
+prior_end_customer,
+currency_code,
+current_period_product_arr_usd_ccfx,
+prior_period_product_arr_usd_ccfx,
+product_arr_change_ccfx,
+current_period_product_arr_lcu,
+prior_period_product_arr_lcu,
+product_arr_change_lcu,
+product_bridge,
+downgraded_license_in_current_date,
+downgraded_everweb_in_current_date,
+downgraded_ektron_in_current_date,
+downgraded_find_in_current_date,
+downgraded_vis_int_in_current_date,
+churned_licenses_in_current_date,
+churned_everweb_in_current_date,
+churned_ektron_in_current_date,
+churned_find_in_current_date,
+churned_vis_int_in_current_date,
+added_orchestrate_in_current_date,
+added_monetize_in_current_date,
+added_cms_in_current_date,
+added_odp_in_current_date,
+increased_orchestrate_in_current_date,
+increased_cms_in_current_date,
+increased_monetize_in_current_date,
+increased_odp_in_current_date,
+orchestrate_in_current_date_with_arr,
+cms_in_current_date_with_arr,
+monetize_in_current_date_with_arr,
+odp_in_current_date_with_arr,
+licenses_in_previous_date_with_arr,
+everweb_in_previous_date_with_arr,
+ektron_in_previous_date_with_arr,
+find_in_previous_date_with_arr,
+vis_int_in_previous_date_with_arr,
+"Movement Classification",
+"Movement Type-PF",
+pg_arr_change,
+pg_arr_change_lcu,
+pg_bridge,
+"Movement Type-PG",
+"Sum of Positive or Negative Movements-PG",
+"Min/Max PF Level movement",
+CASE
+  WHEN double_migration_third_case = TRUE THEN "PG Migration: Rolled Up Amount" - subtracted_amount_ccfx
+  ELSE "PG Migration: Rolled Up Amount"
+END AS "PG Migration: Rolled Up Amount",
+CASE
+  WHEN double_migration_second_case = TRUE THEN new_leftover_value_ccfx
+  ELSE CASE
+    WHEN double_classification_first_case_flag = TRUE
+    OR double_migration_third_case = TRUE THEN NULL
+    ELSE "PG Leftover: Rolled Up Amount"
+  END
+END AS "PG Leftover: Rolled Up Amount",
+CASE
+  WHEN double_migration_third_case = TRUE THEN "PG Migration: Rolled Up Amount LCU" - subtracted_amount_lcu
+  ELSE "PG Migration: Rolled Up Amount LCU"
+END AS "PG Migration: Rolled Up Amount LCU",
+CASE
+  WHEN double_migration_second_case = TRUE THEN new_leftover_value_lcu
+  ELSE CASE
+    WHEN double_classification_first_case_flag = TRUE
+    OR double_migration_third_case = TRUE THEN NULL
+    ELSE "PG Leftover: Rolled Up Amount LCU"
+  END
+END AS "PG Leftover: Rolled Up Amount LCU",
+"PG Migration: Classification",
+CASE
+  WHEN double_migration_second_case = TRUE THEN "PG Leftover: Classification"
+  ELSE CASE
+    WHEN double_classification_first_case_flag = TRUE
+    OR double_migration_third_case = TRUE THEN NULL
+    ELSE "PG Leftover: Classification"
+  END
+END AS "PG Leftover: Classification"
   FROM double_classification_marker --WHERE mcid = '1b026b3d-992b-e111-9eb3-0050568d002c' 
     --  WHERE pg_bridge IS NOT NULL 
 );
@@ -406,7 +412,7 @@ SELECT a.*,
   "PG Leftover: Rolled Up Amount LCU",
   pg_bridge,
   "PG Migration: Classification"
-FROM sandbox.sst_customer_bridge_cm AS a
+FROM sandbox.sst_customer_bridge_cm_core AS a
   JOIN sandbox.churn_migration_test_pg AS b ON a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.baseline_currency = b.currency_code
@@ -423,7 +429,7 @@ SELECT a.*,
   "PG Leftover: Rolled Up Amount LCU",
   "PG Migration: Classification",
   "PG Leftover: Classification"
-FROM sandbox.sst_customer_bridge_cm AS a
+FROM sandbox.sst_customer_bridge_cm_core AS a
   JOIN sandbox.churn_migration_test_pg AS b ON a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.baseline_currency = b.currency_code
@@ -431,14 +437,14 @@ FROM sandbox.sst_customer_bridge_cm AS a
 WHERE "PG Migration: Classification" ILIKE ('%migration%')
   AND "PG Leftover: Rolled Up Amount" IS NOT NULL;
 --
-DELETE FROM sandbox.sst_customer_bridge_cm AS a USING sandbox.PG_migration_default AS b
+DELETE FROM sandbox.sst_customer_bridge_cm_core AS a USING sandbox.PG_migration_default AS b
 WHERE a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.baseline_currency = b.baseline_currency
   AND a.customer_bridge = b.customer_bridge;
 --
 --  SELECT * FROM sandbox.PG_migration_default
-INSERT INTO sandbox.sst_customer_bridge_cm AS a (
+INSERT INTO sandbox.sst_customer_bridge_cm_core AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -469,30 +475,18 @@ SELECT evaluation_period,
   baseline_currency,
   subsidiary_entity_name,
   prior_period_customer_arr_usd_ccfx * abs(
-    "PG Migration: Rolled Up Amount" / CASE
-      WHEN customer_arr_change_ccfx = 0 THEN 1
-      ELSE customer_arr_change_ccfx
-    END
+    "PG Migration: Rolled Up Amount" / customer_arr_change_ccfx
   ),
   current_period_customer_arr_usd_ccfx * abs(
-    "PG Migration: Rolled Up Amount" / CASE
-      WHEN customer_arr_change_ccfx = 0 THEN 1
-      ELSE customer_arr_change_ccfx
-    END
+    "PG Migration: Rolled Up Amount" / customer_arr_change_ccfx
   ),
   --  customer_arr_change_ccfx ,
   "PG Migration: Rolled Up Amount",
   prior_period_customer_arr_lcu * abs(
-    "PG Migration: Rolled Up Amount LCU" / CASE
-      WHEN customer_arr_change_lcu = 0 THEN 1
-      ELSE customer_arr_change_lcu
-    END
+    "PG Migration: Rolled Up Amount LCU" / customer_arr_change_lcu
   ),
   current_period_customer_lcu * abs(
-    "PG Migration: Rolled Up Amount LCU" / CASE
-      WHEN customer_arr_change_lcu = 0 THEN 1
-      ELSE customer_arr_change_lcu
-    END
+    "PG Migration: Rolled Up Amount LCU" / customer_arr_change_lcu
   ),
   "PG Migration: Rolled Up Amount LCU",
   COALESCE("PG Migration: Classification", customer_bridge),
@@ -506,14 +500,14 @@ WHERE mcid = b.mcid
   AND customer_bridge = b.customer_bridge;
 --
 --
-DELETE FROM sandbox.sst_customer_bridge_cm AS a USING sandbox.PG_migration_split AS b
+DELETE FROM sandbox.sst_customer_bridge_cm_core AS a USING sandbox.PG_migration_split AS b
 WHERE a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.baseline_currency = b.baseline_currency
   AND a.customer_bridge = b.customer_bridge;
 --
 --
-INSERT INTO sandbox.sst_customer_bridge_cm AS a (
+INSERT INTO sandbox.sst_customer_bridge_cm_core AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -544,30 +538,30 @@ SELECT evaluation_period,
   baseline_currency,
   subsidiary_entity_name,
   prior_period_customer_arr_usd_ccfx * abs(
-    "PG Migration: Rolled Up Amount" / CASE
-      WHEN customer_arr_change_ccfx = 0 THEN 1
-      ELSE customer_arr_change_ccfx
-    END
+    "PG Migration: Rolled Up Amount" /CASE
+  WHEN customer_arr_change_ccfx = 0 THEN 1
+  ELSE customer_arr_change_ccfx
+END
   ),
   current_period_customer_arr_usd_ccfx * abs(
-    "PG Migration: Rolled Up Amount" / CASE
-      WHEN customer_arr_change_ccfx = 0 THEN 1
-      ELSE customer_arr_change_ccfx
-    END
+    "PG Migration: Rolled Up Amount" /CASE
+  WHEN customer_arr_change_ccfx = 0 THEN 1
+  ELSE customer_arr_change_ccfx
+END
   ),
   --  customer_arr_change_ccfx ,
   "PG Migration: Rolled Up Amount",
   prior_period_customer_arr_lcu * abs(
-    "PG Migration: Rolled Up Amount LCU" / CASE
-      WHEN customer_arr_change_lcu = 0 THEN 1
-      ELSE customer_arr_change_lcu
-    END
+    "PG Migration: Rolled Up Amount LCU" /CASE
+  WHEN customer_arr_change_lcu = 0 THEN 1
+  ELSE customer_arr_change_lcu
+END
   ),
   current_period_customer_lcu * abs(
-    "PG Migration: Rolled Up Amount LCU" / CASE
-      WHEN customer_arr_change_lcu = 0 THEN 1
-      ELSE customer_arr_change_lcu
-    END
+    "PG Migration: Rolled Up Amount LCU" /CASE
+  WHEN customer_arr_change_lcu = 0 THEN 1
+  ELSE customer_arr_change_lcu
+END
   ),
   "PG Migration: Rolled Up Amount LCU",
   --    customer_bridge ,
@@ -580,7 +574,7 @@ WHERE mcid = b.mcid
   AND evaluation_period = b.evaluation_period
   AND baseline_currency = b.baseline_currency
   AND customer_bridge = b.customer_bridge;
-INSERT INTO sandbox.sst_customer_bridge_cm AS a (
+INSERT INTO sandbox.sst_customer_bridge_cm_core AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -611,31 +605,31 @@ SELECT evaluation_period,
   baseline_currency,
   subsidiary_entity_name,
   prior_period_customer_arr_usd_ccfx * abs(
-    "PG Leftover: Rolled Up Amount" / CASE
-      WHEN customer_arr_change_ccfx = 0 THEN 1
-      ELSE customer_arr_change_ccfx
-    END
+    "PG Leftover: Rolled Up Amount" /CASE
+  WHEN customer_arr_change_ccfx = 0 THEN 1
+  ELSE customer_arr_change_ccfx
+END
   ),
   current_period_customer_arr_usd_ccfx * abs(
-    "PG Leftover: Rolled Up Amount" / CASE
-      WHEN customer_arr_change_ccfx = 0 THEN 1
-      ELSE customer_arr_change_ccfx
-    END
+    "PG Leftover: Rolled Up Amount" /CASE
+  WHEN customer_arr_change_ccfx = 0 THEN 1
+  ELSE customer_arr_change_ccfx
+END
   ),
   --  customer_arr_change_ccfx ,
   -- change this to default once and then to migrated value
   "PG Leftover: Rolled Up Amount",
   prior_period_customer_arr_lcu * abs(
-    "PG Leftover: Rolled Up Amount LCU" / CASE
-      WHEN customer_arr_change_lcu = 0 THEN 1
-      ELSE customer_arr_change_lcu
-    END
+    "PG Leftover: Rolled Up Amount LCU" /CASE
+  WHEN customer_arr_change_lcu = 0 THEN 1
+  ELSE customer_arr_change_lcu
+END
   ),
   current_period_customer_lcu * abs(
-    "PG Leftover: Rolled Up Amount LCU" / CASE
-      WHEN customer_arr_change_lcu = 0 THEN 1
-      ELSE customer_arr_change_lcu
-    END
+    "PG Leftover: Rolled Up Amount LCU" /CASE
+  WHEN customer_arr_change_lcu = 0 THEN 1
+  ELSE customer_arr_change_lcu
+END
   ),
   "PG Leftover: Rolled Up Amount LCU",
   --    default_value_lcu ,
@@ -652,7 +646,7 @@ WHERE mcid = b.mcid
 --
 --
 --
-UPDATE sandbox.sst_customer_bridge_cm AS a
+UPDATE sandbox.sst_customer_bridge_cm_core AS a
 SET customer_bridge = split_part(customer_bridge, ' -- ', 1),
   pathways = split_part(customer_bridge, ' -- ', 2)
 WHERE customer_bridge ILIKE '%migration --%';
@@ -677,7 +671,7 @@ SELECT evaluation_period,
   sum(current_period_customer_lcu) AS current_period_customer_lcu,
   sum(prior_period_customer_arr_lcu) AS prior_period_customer_arr_lcu,
   sum(customer_arr_change_lcu) AS customer_arr_change_lcu
-FROM sandbox.sst_customer_bridge_cm
+FROM sandbox.sst_customer_bridge_cm_core
 GROUP BY 1,
   2,
   3,
@@ -691,8 +685,8 @@ GROUP BY 1,
   11,
   12,
   13;
-TRUNCATE TABLE sandbox.sst_customer_bridge_cm;
-INSERT INTO sandbox.sst_customer_bridge_cm(
+TRUNCATE TABLE sandbox.sst_customer_bridge_cm_core;
+INSERT INTO sandbox.sst_customer_bridge_cm_core(
     evaluation_period,
     prior_period,
     current_period,

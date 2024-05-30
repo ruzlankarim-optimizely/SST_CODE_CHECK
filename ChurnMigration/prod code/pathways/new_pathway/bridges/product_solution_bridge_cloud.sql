@@ -1,12 +1,9 @@
-DROP TABLE IF EXISTS sandbox.sst_product_solution_bridge;
-CREATE TABLE sandbox.sst_product_solution_bridge AS
+DROP TABLE IF EXISTS sandbox.sst_product_solution_bridge_cloud;
+CREATE TABLE sandbox.sst_product_solution_bridge_cloud AS
 SELECT *,
   NULL AS pathways
-FROM ufdm.sst_product_bridge_product_solution;
--- SELECT *
--- FROM sandbox.sst_product_solution_bridge
--- LIMIT 10;
--- TRUNCATE TABLE sandbox.sst_product_solution_bridge;
+FROM ufdm.sst_product_bridge_product_solution_split_bridge_report;
+TRUNCATE TABLE sandbox.sst_product_solution_bridge_cloud;
 --#############################################
 --CHURN MIGRATION
 --#############################################
@@ -30,7 +27,7 @@ CREATE temp table churn_migration_classifiers_pg as (
       rt.product_arr_change_lcu as pg_arr_change_lcu,
       rt.product_bridge as pg_bridge
     FROM sandbox.churn_migration_classifiers2 it3
-      left join sandbox.sst_product_solution_bridge rt -- replace with product group bridge
+      left join sandbox.sst_product_solution_bridge_cloud rt -- replace with product group bridge
       -- Here 
       on it3.evaluation_period = rt.evaluation_period
       and COALESCE (
@@ -51,7 +48,7 @@ CREATE temp table churn_migration_classifiers_pg as (
         'Downsell',
         'Price Uplift',
         'Downgrade'
-      ) --                  AND it3.mcid = '903c6b00-ece5-e411-9afb-0050568d2da8'   AND it3.evaluation_period  = '2023M04'
+      ) --            AND it3.mcid =  'e979e503-d1a1-ea11-a812-000d3abb4345'  AND it3.evaluation_period  =  '2020M05'
       --         'f677c904-1faa-db11-8952-0018717a8c82'
       --         
       --      AND it3.evaluation_period = var_period   
@@ -283,99 +280,99 @@ CREATE temp table churn_migration_classifiers_pg as (
         ELSE FALSE
       END AS double_migration_third_case
     FROM double_classification_fix
-  ) --      SELECT 
-  --      *
-  --      FROM double_classification_marker    
+  ) --    SELECT 
+  --    *
+  --    FROM double_classification_marker    
   SELECT evaluation_period,
-    prior_period,
-    current_period,
-    current_master_customer_id,
-    prior_master_customer_id,
-    mcid,
-    current_product_group,
-    prior_product_group,
-    current_product_solution,
-    prior_product_solution,
-    current_pathways,
-    prior_pathways,
-    current_end_customer,
-    prior_end_customer,
-    currency_code,
-    current_period_product_arr_usd_ccfx,
-    prior_period_product_arr_usd_ccfx,
-    product_arr_change_ccfx,
-    current_period_product_arr_lcu,
-    prior_period_product_arr_lcu,
-    product_arr_change_lcu,
-    product_bridge,
-    downgraded_license_in_current_date,
-    downgraded_everweb_in_current_date,
-    downgraded_ektron_in_current_date,
-    downgraded_find_in_current_date,
-    downgraded_vis_int_in_current_date,
-    churned_licenses_in_current_date,
-    churned_everweb_in_current_date,
-    churned_ektron_in_current_date,
-    churned_find_in_current_date,
-    churned_vis_int_in_current_date,
-    added_orchestrate_in_current_date,
-    added_monetize_in_current_date,
-    added_cms_in_current_date,
-    added_odp_in_current_date,
-    increased_orchestrate_in_current_date,
-    increased_cms_in_current_date,
-    increased_monetize_in_current_date,
-    increased_odp_in_current_date,
-    orchestrate_in_current_date_with_arr,
-    cms_in_current_date_with_arr,
-    monetize_in_current_date_with_arr,
-    odp_in_current_date_with_arr,
-    licenses_in_previous_date_with_arr,
-    everweb_in_previous_date_with_arr,
-    ektron_in_previous_date_with_arr,
-    find_in_previous_date_with_arr,
-    vis_int_in_previous_date_with_arr,
-    "Movement Classification",
-    "Movement Type-PF",
-    pg_arr_change,
-    pg_arr_change_lcu,
-    pg_bridge,
-    "Movement Type-PG",
-    "Sum of Positive or Negative Movements-PG",
-    "Min/Max PF Level movement",
-    CASE
-      WHEN double_migration_third_case = TRUE THEN "PG Migration: Rolled Up Amount" - subtracted_amount_ccfx
-      ELSE "PG Migration: Rolled Up Amount"
-    END AS "PG Migration: Rolled Up Amount",
-    CASE
-      WHEN double_migration_second_case = TRUE THEN new_leftover_value_ccfx
-      ELSE CASE
-        WHEN double_classification_first_case_flag = TRUE
-        OR double_migration_third_case = TRUE THEN NULL
-        ELSE "PG Leftover: Rolled Up Amount"
-      END
-    END AS "PG Leftover: Rolled Up Amount",
-    CASE
-      WHEN double_migration_third_case = TRUE THEN "PG Migration: Rolled Up Amount LCU" - subtracted_amount_lcu
-      ELSE "PG Migration: Rolled Up Amount LCU"
-    END AS "PG Migration: Rolled Up Amount LCU",
-    CASE
-      WHEN double_migration_second_case = TRUE THEN new_leftover_value_lcu
-      ELSE CASE
-        WHEN double_classification_first_case_flag = TRUE
-        OR double_migration_third_case = TRUE THEN NULL
-        ELSE "PG Leftover: Rolled Up Amount LCU"
-      END
-    END AS "PG Leftover: Rolled Up Amount LCU",
-    "PG Migration: Classification",
-    CASE
-      WHEN double_migration_second_case = TRUE THEN "PG Leftover: Classification"
-      ELSE CASE
-        WHEN double_classification_first_case_flag = TRUE
-        OR double_migration_third_case = TRUE THEN NULL
-        ELSE "PG Leftover: Classification"
-      END
-    END AS "PG Leftover: Classification"
+prior_period,
+current_period,
+current_master_customer_id,
+prior_master_customer_id,
+mcid,
+current_product_group,
+prior_product_group,
+current_product_solution,
+prior_product_solution,
+current_pathways,
+prior_pathways,
+current_end_customer,
+prior_end_customer,
+currency_code,
+current_period_product_arr_usd_ccfx,
+prior_period_product_arr_usd_ccfx,
+product_arr_change_ccfx,
+current_period_product_arr_lcu,
+prior_period_product_arr_lcu,
+product_arr_change_lcu,
+product_bridge,
+downgraded_license_in_current_date,
+downgraded_everweb_in_current_date,
+downgraded_ektron_in_current_date,
+downgraded_find_in_current_date,
+downgraded_vis_int_in_current_date,
+churned_licenses_in_current_date,
+churned_everweb_in_current_date,
+churned_ektron_in_current_date,
+churned_find_in_current_date,
+churned_vis_int_in_current_date,
+added_orchestrate_in_current_date,
+added_monetize_in_current_date,
+added_cms_in_current_date,
+added_odp_in_current_date,
+increased_orchestrate_in_current_date,
+increased_cms_in_current_date,
+increased_monetize_in_current_date,
+increased_odp_in_current_date,
+orchestrate_in_current_date_with_arr,
+cms_in_current_date_with_arr,
+monetize_in_current_date_with_arr,
+odp_in_current_date_with_arr,
+licenses_in_previous_date_with_arr,
+everweb_in_previous_date_with_arr,
+ektron_in_previous_date_with_arr,
+find_in_previous_date_with_arr,
+vis_int_in_previous_date_with_arr,
+"Movement Classification",
+"Movement Type-PF",
+pg_arr_change,
+pg_arr_change_lcu,
+pg_bridge,
+"Movement Type-PG",
+"Sum of Positive or Negative Movements-PG",
+"Min/Max PF Level movement",
+CASE
+  WHEN double_migration_third_case = TRUE THEN "PG Migration: Rolled Up Amount" - subtracted_amount_ccfx
+  ELSE "PG Migration: Rolled Up Amount"
+END AS "PG Migration: Rolled Up Amount",
+CASE
+  WHEN double_migration_second_case = TRUE THEN new_leftover_value_ccfx
+  ELSE CASE
+    WHEN double_classification_first_case_flag = TRUE
+    OR double_migration_third_case = TRUE THEN NULL
+    ELSE "PG Leftover: Rolled Up Amount"
+  END
+END AS "PG Leftover: Rolled Up Amount",
+CASE
+  WHEN double_migration_third_case = TRUE THEN "PG Migration: Rolled Up Amount LCU" - subtracted_amount_lcu
+  ELSE "PG Migration: Rolled Up Amount LCU"
+END AS "PG Migration: Rolled Up Amount LCU",
+CASE
+  WHEN double_migration_second_case = TRUE THEN new_leftover_value_lcu
+  ELSE CASE
+    WHEN double_classification_first_case_flag = TRUE
+    OR double_migration_third_case = TRUE THEN NULL
+    ELSE "PG Leftover: Rolled Up Amount LCU"
+  END
+END AS "PG Leftover: Rolled Up Amount LCU",
+"PG Migration: Classification",
+CASE
+  WHEN double_migration_second_case = TRUE THEN "PG Leftover: Classification"
+  ELSE CASE
+    WHEN double_classification_first_case_flag = TRUE
+    OR double_migration_third_case = TRUE THEN NULL
+    ELSE "PG Leftover: Classification"
+  END
+END AS "PG Leftover: Classification"
   FROM double_classification_marker --WHERE mcid = '1b026b3d-992b-e111-9eb3-0050568d002c' 
     --  WHERE pg_bridge IS NOT NULL 
 );
@@ -412,7 +409,7 @@ SELECT a.*,
   "PG Leftover: Rolled Up Amount LCU",
   pg_bridge,
   "PG Migration: Classification"
-FROM sandbox.sst_product_solution_bridge AS a
+FROM sandbox.sst_product_solution_bridge_cloud AS a
   JOIN sandbox.churn_migration_test_pg AS b ON a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
@@ -436,7 +433,7 @@ SELECT a.*,
   "PG Leftover: Rolled Up Amount LCU",
   "PG Migration: Classification",
   "PG Leftover: Classification"
-FROM sandbox.sst_product_solution_bridge AS a
+FROM sandbox.sst_product_solution_bridge_cloud AS a
   JOIN sandbox.churn_migration_test_pg AS b ON a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
@@ -451,7 +448,7 @@ FROM sandbox.sst_product_solution_bridge AS a
 WHERE "PG Migration: Classification" ILIKE ('%migration%')
   AND "PG Leftover: Rolled Up Amount" IS NOT NULL;
 --
-DELETE FROM sandbox.sst_product_solution_bridge AS a USING sandbox.PG_migration_default AS b
+DELETE FROM sandbox.sst_product_solution_bridge_cloud AS a USING sandbox.PG_migration_default AS b
 WHERE a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
@@ -465,7 +462,7 @@ WHERE a.mcid = b.mcid
   AND a.product_bridge = b.product_bridge;
 --
 --  SELECT * FROM sandbox.PG_migration_default
-INSERT INTO sandbox.sst_product_solution_bridge AS a (
+INSERT INTO sandbox.sst_product_solution_bridge_cloud AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -540,7 +537,7 @@ WHERE mcid = b.mcid
   AND product_bridge = b.product_bridge;
 --
 --
-DELETE FROM sandbox.sst_product_solution_bridge AS a USING sandbox.PG_migration_split AS b
+DELETE FROM sandbox.sst_product_solution_bridge_cloud AS a USING sandbox.PG_migration_split AS b
 WHERE a.mcid = b.mcid
   AND a.evaluation_period = b.evaluation_period
   AND a.currency_code = b.currency_code
@@ -554,7 +551,7 @@ WHERE a.mcid = b.mcid
   AND a.product_bridge = b.product_bridge;
 --
 --
-INSERT INTO sandbox.sst_product_solution_bridge AS a (
+INSERT INTO sandbox.sst_product_solution_bridge_cloud AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -640,7 +637,7 @@ WHERE mcid = b.mcid
     b.current_product_solution
   )
   AND product_bridge = b.product_bridge;
-INSERT INTO sandbox.sst_product_solution_bridge AS a (
+INSERT INTO sandbox.sst_product_solution_bridge_cloud AS a (
     evaluation_period,
     prior_period,
     current_period,
@@ -731,7 +728,7 @@ WHERE mcid = b.mcid
 --
 --
 --
-UPDATE sandbox.sst_product_solution_bridge AS a
+UPDATE sandbox.sst_product_solution_bridge_cloud AS a
 SET product_bridge = split_part(product_bridge, ' -- ', 1),
   pathways = split_part(product_bridge, ' -- ', 2)
 WHERE product_bridge ILIKE '%migration --%';
@@ -762,7 +759,7 @@ SELECT evaluation_period,
   sum(current_period_product_arr_lcu) AS current_period_product_arr_lcu,
   sum(prior_period_product_arr_lcu) AS prior_period_product_arr_lcu,
   sum(product_arr_change_lcu) AS product_arr_change_lcu
-FROM sandbox.sst_product_solution_bridge
+FROM sandbox.sst_product_solution_bridge_cloud
 GROUP BY 1,
   2,
   3,
@@ -782,8 +779,8 @@ GROUP BY 1,
   17,
   18,
   19;
-TRUNCATE TABLE sandbox.sst_product_solution_bridge;
-INSERT INTO sandbox.sst_product_solution_bridge(
+TRUNCATE TABLE sandbox.sst_product_solution_bridge_cloud;
+INSERT INTO sandbox.sst_product_solution_bridge_cloud(
     evaluation_period,
     prior_period,
     current_period,

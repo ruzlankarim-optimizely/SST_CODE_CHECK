@@ -1,44 +1,42 @@
-DROP TABLE IF EXISTS sandbox.churn_migration_classifiers;
-create table sandbox.churn_migration_classifiers as (
+DROP TABLE IF EXISTS sandbox.churn_migration_classifiers2;
+create table sandbox.churn_migration_classifiers2 as (
   with initial_table as (
-    select *,
-      current_pathways as current_product_family_class,
-      prior_pathways as prior_product_family_class
-    from ryzlan.sst_product_pathways_bridge
+    select *
+    from ryzlan.sst_product_pathways_bridge2
   ),
   initial_table_2 as (
     select *,
       --Did a customer downgrade a legacy product family in the current snapshot date
       case
-        when current_product_family_class = 'Licenses'
+        when current_pathways = 'Licenses'
         and product_arr_change_ccfx < 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Downgraded a Licenses  Product in Current Date",
+      end as downgraded_license_in_current_date,
       case
-        when current_product_family_class IN ('Everweb')
+        when current_pathways IN ('Everweb')
         and product_arr_change_ccfx < 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Downgraded a Everweb  Product in Current Date",
+      end as downgraded_everweb_in_current_date,
       case
-        when current_product_family_class IN ('Ektron')
+        when current_pathways IN ('Ektron')
         and product_arr_change_ccfx < 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Downgraded a Ektron  Product in Current Date",
+      end as downgraded_ektron_in_current_date,
       case
-        when current_product_family_class = 'Personalized Find'
+        when current_pathways = 'Find'
         and product_arr_change_ccfx < 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Downgraded a Personalized Find  Product in Current Date",
+      end as downgraded_find_in_current_date,
       case
-        when current_product_family_class IN (
+        when current_pathways IN (
           'Visitor Intelligence',
           'Search & Navigation - Standalone'
         )
@@ -46,38 +44,38 @@ create table sandbox.churn_migration_classifiers as (
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Downgraded a Visitor Int  Product in Current Date",
+      end as downgraded_vis_int_in_current_date,
       --Did a customer churn a legacy product family in the current snapshot date
       case
-        when prior_product_family_class IN ('Licenses')
+        when prior_pathways IN ('Licenses')
         and product_arr_change_ccfx < 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx = 0 then 1
         else 0
-      end as "Churned a Licenses Product in Current Date",
+      end as churned_licenses_in_current_date,
       case
-        when prior_product_family_class IN ('Everweb')
+        when prior_pathways IN ('Everweb')
         and product_arr_change_ccfx < 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx = 0 then 1
         else 0
-      end as "Churned a Everweb Product in Current Date",
+      end as churned_everweb_in_current_date,
       case
-        when prior_product_family_class IN ('Ektron')
+        when prior_pathways IN ('Ektron')
         and product_arr_change_ccfx < 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx = 0 then 1
         else 0
-      end as "Churned a Ektron Product in Current Date",
+      end as churned_ektron_in_current_date,
       case
-        when prior_product_family_class IN ('Personalized Find')
+        when prior_pathways IN ('Find')
         and product_arr_change_ccfx < 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx = 0 then 1
         else 0
-      end as "Churned a Personalized Find Product in Current Date",
+      end as churned_find_in_current_date,
       case
-        when prior_product_family_class IN (
+        when prior_pathways IN (
           'Visitor Intelligence',
           'Search & Navigation - Standalone'
         )
@@ -85,124 +83,115 @@ create table sandbox.churn_migration_classifiers as (
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx = 0 then 1
         else 0
-      end as "Churned a Visitor Int Product in Current Date",
+      end as churned_vis_int_in_current_date,
       --Did the customer add a named product in the current snapshot date
       case
-        when current_product_family_class IN ('Cloud')
+        when current_pathways IN ('Orchestrate')
         and product_arr_change_ccfx > 0
         and prior_period_product_arr_usd_ccfx = 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Added a Cloud Product in Current Date",
+      end as added_orchestrate_in_current_date,
       case
-        when current_product_family_class IN (
-          'Content Managemen System (CMS)',
-          'Content Management System (CMS)'
-        )
+        when current_pathways IN ('Monetize')
         and product_arr_change_ccfx > 0
         and prior_period_product_arr_usd_ccfx = 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Added a CMS Product in Current Date",
+      end as added_monetize_in_current_date,
       case
-        when current_product_family_class IN ('Content Graph')
+        when current_pathways IN ('CMS')
         and product_arr_change_ccfx > 0
         and prior_period_product_arr_usd_ccfx = 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Added a Content Graph Product in Current Date",
+      end as added_cms_in_current_date,
       case
-        when current_product_family_class IN ('Data Platform (ODP)')
+        when current_pathways IN ('ODP')
         and product_arr_change_ccfx > 0
         and prior_period_product_arr_usd_ccfx = 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Added a ODP Product in Current Date",
+      end as added_odp_in_current_date,
       --Did the customer increase a named product in the current snapshot date
       case
-        when current_product_family_class IN ('Cloud')
+        when current_pathways IN ('Orchestrate')
         and product_arr_change_ccfx > 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Increased a Cloud Product in Current Date",
+      end as increased_orchestrate_in_current_date,
       case
-        when current_product_family_class IN (
-          'Content Managemen System (CMS)',
-          'Content Management System (CMS)'
-        )
+        when current_pathways IN ('CMS')
         and product_arr_change_ccfx > 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Increased a CMS Product in Current Date",
+      end as increased_cms_in_current_date,
       case
-        when current_product_family_class IN ('Content Graph')
+        when current_pathways IN ('Monetize')
         and product_arr_change_ccfx > 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Increased a Content Graph Product in Current Date",
+      end as increased_monetize_in_current_date,
       case
-        when current_product_family_class IN ('Data Platform (ODP)')
+        when current_pathways IN ('ODP')
         and product_arr_change_ccfx > 0
         and prior_period_product_arr_usd_ccfx > 0
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Increased a ODP Product in Current Date",
+      end as increased_odp_in_current_date,
       --Do they have a named product in current snapshot period with ARR > 0
       case
-        when current_product_family_class IN ('Cloud')
+        when current_pathways IN ('Orchestrate')
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Cloud Product in Current Date with ARR",
+      end as orchestrate_in_current_date_with_arr,
       case
-        when current_product_family_class IN (
-          'Content Managemen System (CMS)',
-          'Content Management System (CMS)'
-        )
+        when current_pathways IN ('CMS')
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "CMS  Product in Current Date with ARR",
+      end as cms_in_current_date_with_arr,
       case
-        when current_product_family_class IN ('Content Graph')
+        when current_pathways IN ('Monetize')
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Content Graph Product in Current Date with ARR",
+      end as monetize_in_current_date_with_arr,
       case
-        when current_product_family_class IN ('Data Platform (ODP)')
+        when current_pathways IN ('ODP')
         and current_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "ODP Product in Current Date with ARR",
+      end as odp_in_current_date_with_arr,
       --Did they have a legacy product in the prior snapshot period
       case
-        when prior_product_family_class IN ('Licenses')
+        when prior_pathways IN ('Licenses')
         and prior_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Licenses Product in Previous Date with ARR",
+      end as licenses_in_previous_date_with_arr,
       case
-        when prior_product_family_class IN ('Everweb')
+        when prior_pathways IN ('Everweb')
         and prior_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Everweb Product in Previous Date with ARR",
+      end as everweb_in_previous_date_with_arr,
       case
-        when prior_product_family_class IN ('Ektron')
+        when prior_pathways IN ('Ektron')
         and prior_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Ektron Product in Previous Date with ARR",
+      end as ektron_in_previous_date_with_arr,
       case
-        when prior_product_family_class IN ('Personalized Find')
+        when prior_pathways IN ('Find')
         and prior_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Personalized Find Product in Previous Date with ARR",
+      end as find_in_previous_date_with_arr,
       case
-        when prior_product_family_class IN (
+        when prior_pathways IN (
           'Visitor Intelligence',
           'Search & Navigation - Standalone'
         )
         and prior_period_product_arr_usd_ccfx > 0 then 1
         else 0
-      end as "Visitor Int Product in Previous Date with ARR"
+      end as vis_int_in_previous_date_with_arr
     from initial_table
   ),
   initial_table_3 as (
@@ -210,28 +199,64 @@ create table sandbox.churn_migration_classifiers as (
       --If a customer churned or downgraded a legacy product family & they had a named product in the current snapshot period >0 ARR we would classify the churn / downgrade as migration
       case
         --ai)
-        when "Downgraded a Licenses  Product in Current Date" = 1 --Downgraded a legacy product
+        when downgraded_license_in_current_date = 1 --Downgraded a legacy product
         and (
-          sum("Cloud Product in Current Date with ARR") over(
+          sum(orchestrate_in_current_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- have named product in current date with ARR > 0
-        then 'downgrade - migration -- Licenses to Cloud' --ai)
+        then 'downgrade - migration -- Licenses to Orchestrate'
+        when downgraded_license_in_current_date = 1 --Downgraded a legacy product
+        and (
+          sum(monetize_in_current_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- have named product in current date with ARR > 0
+        then 'downgrade - migration -- Licenses to Monetize' --ai)
         --ai)
-        when "Downgraded a Everweb  Product in Current Date" = 1 --Downgraded a legacy product
+        when downgraded_everweb_in_current_date = 1 --Downgraded a legacy product
         and (
-          sum("CMS  Product in Current Date with ARR") over(
+          sum(orchestrate_in_current_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- have named product in current date with ARR > 0
-        then 'downgrade - migration -- Everweb to CMS' --ai)
-        when "Downgraded a Ektron  Product in Current Date" = 1 --Downgraded a legacy product
+        then 'downgrade - migration -- Everweb to Orchestrate'
+        when downgraded_everweb_in_current_date = 1 --Downgraded a legacy product
         and (
-          sum("CMS  Product in Current Date with ARR") over(
+          sum(monetize_in_current_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- have named product in current date with ARR > 0
+        then 'downgrade - migration -- Everweb to Monetize'
+        when downgraded_find_in_current_date = 1 --Downgraded a legacy 
+        and (
+          sum(orchestrate_in_current_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- have named product in current date with ARR > 0
+        then 'downgrade - migration -- Personalised Find to Orchestrate'
+        when downgraded_find_in_current_date = 1 --Downgraded a legacy 
+        and (
+          sum(monetize_in_current_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- have named product in current date with ARR > 0
+        then 'downgrade - migration -- Personalised Find to Monetize' --ai)
+        when downgraded_ektron_in_current_date = 1 --Downgraded a legacy product
+        and (
+          sum(cms_in_current_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
@@ -239,93 +264,166 @@ create table sandbox.churn_migration_classifiers as (
         ) > 0 -- have named product in current date with ARR > 0
         then 'downgrade - migration -- Ektron to CMS' --ai)
         --ai)
-        when "Downgraded a Personalized Find  Product in Current Date" = 1 --Downgraded a legacy product
-        and (
-          sum("Content Graph Product in Current Date with ARR") over(
-            partition by mcid,
-            evaluation_period,
-            currency_code
-          )
-        ) > 0 -- have named product in current date with ARR > 0
-        then 'downgrade - migration -- Personalised Find to Content Graph' --ai)
         --ai)
-        when "Downgraded a Visitor Int  Product in Current Date" = 1 --Downgraded a legacy product
+        --ai)
+        when downgraded_vis_int_in_current_date = 1 --Downgraded a legacy product
         and (
-          sum("ODP Product in Current Date with ARR") over(
+          sum(odp_in_current_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- have named product in current date with ARR > 0
         then 'downgrade - migration -- VisitorInt to ODP' --ai)
-        when "Churned a Licenses Product in Current Date" = 1 --Churned a legacy product
+        when churned_licenses_in_current_date = 1 --Churned a legacy product
         and (
-          sum("Cloud Product in Current Date with ARR") over(
+          sum(orchestrate_in_current_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- have named product in current date with ARR > 0
-        then 'Downsell - migration -- Licenses to Cloud' --bi)
-        when "Churned a Everweb Product in Current Date" = 1 --Churned a legacy product
+        then 'Downsell - migration -- Licenses to Orchestrate'
+        when churned_licenses_in_current_date = 1 --Churned a legacy product
         and (
-          sum("CMS  Product in Current Date with ARR") over(
+          sum(monetize_in_current_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- have named product in current date with ARR > 0
-        then 'Downsell - migration -- Everweb to CMS' --bi)
-        when "Churned a Ektron Product in Current Date" = 1 --Churned a legacy product
+        then 'Downsell - migration -- Licenses to Monetize' --bi)
+        when churned_everweb_in_current_date = 1 --Churned a legacy product
         and (
-          sum("CMS  Product in Current Date with ARR") over(
+          sum(orchestrate_in_current_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- have named product in current date with ARR > 0
-        then 'Downsell - migration -- Ektron to CMS'
-        when "Churned a Personalized Find Product in Current Date" = 1 --Churned a legacy product
+        then 'Downsell - migration -- Everweb to Orchestrate'
+        when churned_everweb_in_current_date = 1 --Churned a legacy product
         and (
-          sum("Content Graph Product in Current Date with ARR") over(
+          sum(monetize_in_current_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- have named product in current date with ARR > 0
-        then 'Downsell - migration -- Personalised Find to Content Graph' --bi)
-        when "Churned a Visitor Int Product in Current Date" = 1 --Churned a legacy product
+        then 'Downsell - migration -- Everweb to Monetize'
+        when churned_find_in_current_date = 1 --Churned a legacy product
         and (
-          sum("ODP Product in Current Date with ARR") over(
+          sum(orchestrate_in_current_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- have named product in current date with ARR > 0
+        then 'Downsell - migration -- Personalised Find to Orchestrate'
+        when churned_find_in_current_date = 1 --Churned a legacy product
+        and (
+          sum(monetize_in_current_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- have named product in current date with ARR > 0
+        then 'Downsell - migration -- Personalised Find to Monetize' --bi)
+        when churned_ektron_in_current_date = 1 --Churned a legacy product
+        and (
+          sum(cms_in_current_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- have named product in current date with ARR > 0
+        then 'Downsell - migration -- Ektron to CMS' --bi)
+        when churned_vis_int_in_current_date = 1 --Churned a legacy product
+        and (
+          sum(odp_in_current_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- have named product in current date with ARR > 0
         then 'Downsell - migration -- VisitorInt to ODP' --bi)
-        when "Added a Cloud Product in Current Date" = 1 --Added a named product in the current snapshot date
+        when added_orchestrate_in_current_date = 1 --Added a named product in the current snapshot date
         and (
           (
-            sum("Downgraded a Licenses  Product in Current Date") over(
+            sum(downgraded_license_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
           or (
-            sum("Churned a Licenses Product in Current Date") over(
+            sum(churned_licenses_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
         ) -- Either churned or downgraded a legacy product in the current snapshot date
-        then 'Cross-sell - migration -- Licenses to Cloud' --bii)
-        when "Added a CMS Product in Current Date" = 1 --Added a named product in the current snapshot date
+        then 'Cross-sell - migration -- Licenses to Orchestrate'
+        when added_monetize_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          (
+            sum(downgraded_license_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(churned_licenses_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either churned or downgraded a legacy product in the current snapshot date
+        then 'Cross-sell - migration -- Licenses to Monetize'
+        when added_orchestrate_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          (
+            sum(downgraded_everweb_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(churned_everweb_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either churned or downgraded a legacy product in the current snapshot date
+        then 'Cross-sell - migration -- Everweb to Orchestrate'
+        when added_monetize_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          (
+            sum(downgraded_everweb_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(churned_everweb_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either churned or downgraded a legacy product in the current snapshot date
+        then 'Cross-sell - migration -- Everweb to Monetize'
+        when added_orchestrate_in_current_date = 1 --Added a named product in the current snapshot date
         and (
           (
             sum(
-              "Downgraded a Everweb  Product in Current Date"
+              downgraded_find_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -334,7 +432,7 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
           or (
             sum(
-              "Churned a Everweb Product in Current Date"
+              churned_find_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -342,12 +440,12 @@ create table sandbox.churn_migration_classifiers as (
             )
           ) > 0
         ) -- Either churned or downgraded a legacy product in the current snapshot date
-        then 'Cross-sell - migration -- Everweb to CMS'
-        when "Added a CMS Product in Current Date" = 1 --Added a named product in the current snapshot date
+        then 'Cross-sell - migration -- Personalised Find to Orchestrate'
+        when added_monetize_in_current_date = 1 --Added a named product in the current snapshot date
         and (
           (
             sum(
-              "Downgraded a Ektron  Product in Current Date"
+              downgraded_find_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -356,7 +454,29 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
           or (
             sum(
-              "Churned a Ektron Product in Current Date"
+              churned_find_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either churned or downgraded a legacy product in the current snapshot date
+        then 'Cross-sell - migration -- Personalised Find to Monetize' --bii)
+        when added_cms_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          (
+            sum(
+              downgraded_ektron_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(
+              churned_ektron_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -365,11 +485,104 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
         ) -- Either churned or downgraded a legacy product in the current snapshot date
         then 'Cross-sell - migration -- Ektron to CMS' --bii)
-        when "Added a Content Graph Product in Current Date" = 1 --Added a named product in the current snapshot date
+        --bii)
+        when added_odp_in_current_date = 1 --Added a named product in the current snapshot date
         and (
           (
             sum(
-              "Downgraded a Personalized Find  Product in Current Date"
+              downgraded_vis_int_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(churned_vis_int_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either churned or downgraded a legacy product in the current snapshot date
+        then 'Cross-sell - migration -- VisitorInt to ODP'
+        when increased_orchestrate_in_current_date = 1 --Increased a named product in the current snapshot date
+        and (
+          (
+            sum(downgraded_license_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(churned_licenses_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either churned or downgraded a legacy product in the current snapshot date
+        then 'upsell - migration -- Licenses to Orchestrate'
+        when increased_monetize_in_current_date = 1 --Increased a named product in the current snapshot date
+        and (
+          (
+            sum(downgraded_license_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(churned_licenses_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either churned or downgraded a legacy product in the current snapshot date
+        then 'upsell - migration -- Licenses to Monetize'
+        when increased_orchestrate_in_current_date = 1 --Increased a named product in the current snapshot date
+        and (
+          (
+            sum(downgraded_everweb_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(churned_everweb_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either churned or downgraded a legacy product in the current snapshot date
+        then 'upsell - migration -- Everweb to Orchestrate'
+        when increased_monetize_in_current_date = 1 --Increased a named product in the current snapshot date
+        and (
+          (
+            sum(downgraded_everweb_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(churned_everweb_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either churned or downgraded a legacy product in the current snapshot date
+        then 'upsell - migration -- Everweb to Monetize' --If a customer increased or added a named product & they had a legacy product in the prior snapshot period > 0 ARR we would classify the movement as migration
+        when increased_orchestrate_in_current_date = 1 --Increased a named product in the current snapshot date
+        and (
+          (
+            sum(
+              downgraded_find_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -378,7 +591,7 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
           or (
             sum(
-              "Churned a Personalized Find Product in Current Date"
+              churned_find_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -386,50 +599,12 @@ create table sandbox.churn_migration_classifiers as (
             )
           ) > 0
         ) -- Either churned or downgraded a legacy product in the current snapshot date
-        then 'Cross-sell - migration -- Personalised Find to Content Graph' --bii)
-        when "Added a ODP Product in Current Date" = 1 --Added a named product in the current snapshot date
+        then 'upsell - migration -- Personalised Find to Orchestrate'
+        when increased_monetize_in_current_date = 1 --Increased a named product in the current snapshot date
         and (
           (
             sum(
-              "Downgraded a Visitor Int  Product in Current Date"
-            ) over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-          or (
-            sum("Churned a Visitor Int Product in Current Date") over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-        ) -- Either churned or downgraded a legacy product in the current snapshot date
-        then 'Cross-sell - migration -- VisitorInt to ODP' --bii)
-        when "Increased a Cloud Product in Current Date" = 1 --Increased a named product in the current snapshot date
-        and (
-          (
-            sum("Downgraded a Licenses  Product in Current Date") over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-          or (
-            sum("Churned a Licenses Product in Current Date") over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-        ) -- Either churned or downgraded a legacy product in the current snapshot date
-        then 'upsell - migration -- Licenses to Cloud' --If a customer increased or added a named product & they had a legacy product in the prior snapshot period > 0 ARR we would classify the movement as migration
-        when "Increased a CMS Product in Current Date" = 1 --Increased a named product in the current snapshot date
-        and (
-          (
-            sum(
-              "Downgraded a Everweb  Product in Current Date"
+              downgraded_find_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -438,7 +613,7 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
           or (
             sum(
-              "Churned a Everweb Product in Current Date"
+              churned_find_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -446,12 +621,12 @@ create table sandbox.churn_migration_classifiers as (
             )
           ) > 0
         ) -- Either churned or downgraded a legacy product in the current snapshot date
-        then 'upsell - migration -- Everweb to CMS'
-        when "Increased a CMS Product in Current Date" = 1 --Increased a named product in the current snapshot date
+        then 'upsell - migration -- Personalised Find to Monetize'
+        when increased_cms_in_current_date = 1 --Increased a named product in the current snapshot date
         and (
           (
             sum(
-              "Downgraded a Ektron  Product in Current Date"
+              downgraded_ektron_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -460,7 +635,7 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
           or (
             sum(
-              "Churned a Ektron Product in Current Date"
+              churned_ektron_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -469,11 +644,12 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
         ) -- Either churned or downgraded a legacy product in the current snapshot date
         then 'upsell - migration -- Ektron to CMS' --If a customer increased or added a named product & they had a legacy product in the prior snapshot period > 0 ARR we would classify the movement as migration
-        when "Increased a Content Graph Product in Current Date" = 1 --Increased a named product in the current snapshot date
+        --If a customer increased or added a named product & they had a legacy product in the prior snapshot period > 0 ARR we would classify the movement as migration
+        when increased_odp_in_current_date = 1 --Increased a named product in the current snapshot date
         and (
           (
             sum(
-              "Downgraded a Personalized Find  Product in Current Date"
+              downgraded_vis_int_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -481,29 +657,7 @@ create table sandbox.churn_migration_classifiers as (
             )
           ) > 0
           or (
-            sum(
-              "Churned a Personalized Find Product in Current Date"
-            ) over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-        ) -- Either churned or downgraded a legacy product in the current snapshot date
-        then 'upsell - migration -- Personalised Find to Content Graph' --If a customer increased or added a named product & they had a legacy product in the prior snapshot period > 0 ARR we would classify the movement as migration
-        when "Increased a ODP Product in Current Date" = 1 --Increased a named product in the current snapshot date
-        and (
-          (
-            sum(
-              "Downgraded a Visitor Int  Product in Current Date"
-            ) over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-          or (
-            sum("Churned a Visitor Int Product in Current Date") over(
+            sum(churned_vis_int_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
@@ -511,30 +665,64 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
         ) -- Either churned or downgraded a legacy product in the current snapshot date
         then 'upsell - migration -- VisitorInt to ODP' --If a customer increased or added a named product & they had a legacy product in the prior snapshot period > 0 ARR we would classify the movement as migration
-        when "Added a Cloud Product in Current Date" = 1 --Added a named product in the current snapshot date
+        when added_orchestrate_in_current_date = 1 --Added a named product in the current snapshot date
         and (
-          sum("Licenses Product in Previous Date with ARR") over(
+          sum(licenses_in_previous_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
-        then 'Cross-sell - migration -- Licenses to Cloud' --cii)
-        when "Added a CMS Product in Current Date" = 1 --Added a named product in the current snapshot date
+        then 'Cross-sell - migration -- Licenses to Orchestrate'
+        when added_monetize_in_current_date = 1 --Added a named product in the current snapshot date
         and (
-          sum(
-            "Everweb Product in Previous Date with ARR"
-          ) over(
+          sum(licenses_in_previous_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
-        then 'Cross-sell - migration -- Everweb to CMS'
-        when "Added a CMS Product in Current Date" = 1 --Added a named product in the current snapshot date
+        then 'Cross-sell - migration -- Licenses to Monetize'
+        when added_orchestrate_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          sum(everweb_in_previous_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
+        then 'Cross-sell - migration -- Everweb to Orchestrate'
+        when added_monetize_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          sum(everweb_in_previous_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
+        then 'Cross-sell - migration -- Everweb to Monetize' --cii)
+        when added_orchestrate_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          sum(find_in_previous_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
+        then 'Cross-sell - migration -- Personalised Find to Orchestrate'
+        when added_monetize_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          sum(find_in_previous_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
+        then 'Cross-sell - migration -- Personalised Find to Monetize'
+        when added_cms_in_current_date = 1 --Added a named product in the current snapshot date
         and (
           sum(
-            "Ektron Product in Previous Date with ARR"
+            ektron_in_previous_date_with_arr
           ) over(
             partition by mcid,
             evaluation_period,
@@ -542,50 +730,74 @@ create table sandbox.churn_migration_classifiers as (
           )
         ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
         then 'Cross-sell - migration -- Ektron to CMS' --cii)
-        when "Added a Content Graph Product in Current Date" = 1 --Added a named product in the current snapshot date
+        --cii)
+        when added_odp_in_current_date = 1 --Added a named product in the current snapshot date
         and (
-          sum(
-            "Personalized Find Product in Previous Date with ARR"
-          ) over(
-            partition by mcid,
-            evaluation_period,
-            currency_code
-          )
-        ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
-        then 'Cross-sell - migration -- Personalised Find to Content Graph' --cii)
-        when "Added a ODP Product in Current Date" = 1 --Added a named product in the current snapshot date
-        and (
-          sum("Visitor Int Product in Previous Date with ARR") over(
+          sum(vis_int_in_previous_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
         then 'Cross-sell - migration -- VisitorInt to ODP' --cii)
-        when "Increased a Cloud Product in Current Date" = 1 --Added a named product in the current snapshot date
+        when increased_orchestrate_in_current_date = 1 --Added a named product in the current snapshot date
         and (
-          sum("Licenses Product in Previous Date with ARR") over(
+          sum(licenses_in_previous_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
-        then 'upsell - migration -- Licenses to Cloud' --di)
-        when "Increased a CMS Product in Current Date" = 1 --Added a named product in the current snapshot date
+        then 'upsell - migration -- Licenses to Orchestrate'
+        when increased_monetize_in_current_date = 1 --Added a named product in the current snapshot date
         and (
-          sum(
-            "Everweb Product in Previous Date with ARR"
-          ) over(
+          sum(licenses_in_previous_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
-        then 'upsell - migration -- Everweb to CMS'
-        when "Increased a CMS Product in Current Date" = 1 --Added a named product in the current snapshot date
+        then 'upsell - migration -- Licenses to Monetize' --di)
+        when increased_orchestrate_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          sum(everweb_in_previous_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
+        then 'upsell - migration -- Everweb to Orchestrate'
+        when increased_monetize_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          sum(everweb_in_previous_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
+        then 'upsell - migration -- Everweb to Monetize'
+        when increased_orchestrate_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          sum(find_in_previous_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
+        then 'upsell - migration -- Personalised Find to Orchestrate'
+        when increased_monetize_in_current_date = 1 --Added a named product in the current snapshot date
+        and (
+          sum(find_in_previous_date_with_arr) over(
+            partition by mcid,
+            evaluation_period,
+            currency_code
+          )
+        ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
+        then 'upsell - migration -- Personalised Find to Monetize'
+        when increased_cms_in_current_date = 1 --Added a named product in the current snapshot date
         and (
           sum(
-            "Ektron Product in Previous Date with ARR"
+            ektron_in_previous_date_with_arr
           ) over(
             partition by mcid,
             evaluation_period,
@@ -593,73 +805,145 @@ create table sandbox.churn_migration_classifiers as (
           )
         ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
         then 'upsell - migration -- Ektron to CMS' --di)
-        when "Increased a Content Graph Product in Current Date" = 1 --Added a named product in the current snapshot date
+        --di)
+        when increased_odp_in_current_date = 1 --Added a named product in the current snapshot date
         and (
-          sum(
-            "Personalized Find Product in Previous Date with ARR"
-          ) over(
-            partition by mcid,
-            evaluation_period,
-            currency_code
-          )
-        ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
-        then 'upsell - migration -- Personalised Find to Content Graph' --di)
-        when "Increased a ODP Product in Current Date" = 1 --Added a named product in the current snapshot date
-        and (
-          sum("Visitor Int Product in Previous Date with ARR") over(
+          sum(vis_int_in_previous_date_with_arr) over(
             partition by mcid,
             evaluation_period,
             currency_code
           )
         ) > 0 -- had a legacy product in previous snapshot date with ARR > 0
         then 'upsell - migration -- VisitorInt to ODP' --di)
-        when "Churned a Licenses Product in Current Date" = 1 --Churned a legacy product from prior snapshot date
+        when churned_licenses_in_current_date = 1 --Churned a legacy product from prior snapshot date
         and (
           (
-            sum("Added a Cloud Product in Current Date") over(
+            sum(added_orchestrate_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
           or (
-            sum("Increased a Cloud Product in Current Date") over(
+            sum(increased_orchestrate_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
         ) -- Either Added or Increased a named product in the current snapshot date
-        then 'Downsell - migration -- Licenses to Cloud' --dii)
-        when "Churned a Everweb Product in Current Date" = 1 --Churned a legacy product from prior snapshot date
+        then 'Downsell - migration -- Licenses to Orchestrate'
+        when churned_licenses_in_current_date = 1 --Churned a legacy product from prior snapshot date
         and (
           (
-            sum("Added a CMS Product in Current Date") over(
+            sum(added_monetize_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
           or (
-            sum("Increased a CMS Product in Current Date") over(
+            sum(
+              increased_monetize_in_current_date
+            ) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
         ) -- Either Added or Increased a named product in the current snapshot date
-        then 'Downsell - migration -- Everweb to CMS'
-        when "Churned a Ektron Product in Current Date" = 1 --Churned a legacy product from prior snapshot date
+        then 'Downsell - migration -- Licenses to Monetize' --dii)
+        when churned_everweb_in_current_date = 1 --Churned a legacy product from prior snapshot date
         and (
           (
-            sum("Added a CMS Product in Current Date") over(
+            sum(added_orchestrate_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
           or (
-            sum("Increased a CMS Product in Current Date") over(
+            sum(
+              increased_orchestrate_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either Added or Increased a named product in the current snapshot date
+        then 'Downsell - migration -- Everweb to Orchestrate'
+        when churned_everweb_in_current_date = 1 --Churned a legacy product from prior snapshot date
+        and (
+          (
+            sum(added_monetize_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(
+              increased_monetize_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either Added or Increased a named product in the current snapshot date
+        then 'Downsell - migration -- Everweb to Monetize'
+        when churned_find_in_current_date = 1 --Churned a legacy product from prior snapshot date
+        and (
+          (
+            sum(added_orchestrate_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(
+              increased_orchestrate_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either Added or Increased a named product in the current snapshot date
+        then 'Downsell - migration -- Personalised Find to Orchestrate'
+        when churned_find_in_current_date = 1 --Churned a legacy product from prior snapshot date
+        and (
+          (
+            sum(added_monetize_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(
+              increased_monetize_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either Added or Increased a named product in the current snapshot date
+        then 'Downsell - migration -- Personalised Find to Monetize'
+        when churned_ektron_in_current_date = 1 --Churned a legacy product from prior snapshot date
+        and (
+          (
+            sum(added_cms_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(increased_cms_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
@@ -667,37 +951,18 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
         ) -- Either Added or Increased a named product in the current snapshot date
         then 'Downsell - migration -- Ektron to CMS' --dii)
-        when "Churned a Personalized Find Product in Current Date" = 1 --Churned a legacy product from prior snapshot date
+        --dii)
+        when churned_vis_int_in_current_date = 1 --Churned a legacy product from prior snapshot date
         and (
           (
-            sum("Added a Content Graph Product in Current Date") over(
+            sum(added_odp_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
           or (
-            sum(
-              "Increased a Content Graph Product in Current Date"
-            ) over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-        ) -- Either Added or Increased a named product in the current snapshot date
-        then 'Downsell - migration -- Personalised Find to Content Graph' --dii)
-        when "Churned a Visitor Int Product in Current Date" = 1 --Churned a legacy product from prior snapshot date
-        and (
-          (
-            sum("Added a ODP Product in Current Date") over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-          or (
-            sum("Increased a ODP Product in Current Date") over(
+            sum(increased_odp_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
@@ -705,64 +970,28 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
         ) -- Either Added or Increased a named product in the current snapshot date
         then 'Downsell - migration -- VisitorInt to ODP' --dii)
-        when "Downgraded a Licenses  Product in Current Date" = 1 --Downgraded a legacy product from prior snapshot date
+        when downgraded_license_in_current_date = 1 --Downgraded a legacy product from prior snapshot date
         and (
           (
-            sum("Added a Cloud Product in Current Date") over(
+            sum(added_orchestrate_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
           or (
-            sum("Increased a Cloud Product in Current Date") over(
+            sum(increased_orchestrate_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
         ) -- Either Added or Increased a named product in the current snapshot date
-        then 'downgrade - migration -- Licenses to Cloud'
-        when "Downgraded a Everweb  Product in Current Date" = 1 --Downgraded a legacy product from prior snapshot date
+        then 'downgrade - migration -- Licenses to Orchestrate'
+        when downgraded_license_in_current_date = 1 --Downgraded a legacy product from prior snapshot date
         and (
           (
-            sum("Added a CMS Product in Current Date") over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-          or (
-            sum("Increased a CMS Product in Current Date") over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-        ) -- Either Added or Increased a named product in the current snapshot date
-        then 'downgrade - migration -- Everweb to CMS'
-        when "Downgraded a Ektron  Product in Current Date" = 1 --Downgraded a legacy product from prior snapshot date
-        and (
-          (
-            sum("Added a CMS Product in Current Date") over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-          or (
-            sum("Increased a CMS Product in Current Date") over(
-              partition by mcid,
-              evaluation_period,
-              currency_code
-            )
-          ) > 0
-        ) -- Either Added or Increased a named product in the current snapshot date
-        then 'downgrade - migration -- Ektron to CMS'
-        when "Downgraded a Personalized Find  Product in Current Date" = 1 --Downgraded a legacy product from prior snapshot date
-        and (
-          (
-            sum("Added a Content Graph Product in Current Date") over(
+            sum(added_monetize_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
@@ -770,7 +999,7 @@ create table sandbox.churn_migration_classifiers as (
           ) > 0
           or (
             sum(
-              "Increased a Content Graph Product in Current Date"
+              increased_monetize_in_current_date
             ) over(
               partition by mcid,
               evaluation_period,
@@ -778,18 +1007,116 @@ create table sandbox.churn_migration_classifiers as (
             )
           ) > 0
         ) -- Either Added or Increased a named product in the current snapshot date
-        then 'downgrade - migration -- Personalised Find to Content Graph'
-        when "Downgraded a Visitor Int  Product in Current Date" = 1 --Downgraded a legacy product from prior snapshot date
+        then 'downgrade - migration -- Licenses to Monetize'
+        when downgraded_everweb_in_current_date = 1 --Downgraded a legacy product from prior snapshot date
         and (
           (
-            sum("Added a ODP Product in Current Date") over(
+            sum(added_orchestrate_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
             )
           ) > 0
           or (
-            sum("Increased a ODP Product in Current Date") over(
+            sum(
+              increased_orchestrate_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either Added or Increased a named product in the current snapshot date
+        then 'downgrade - migration -- Everweb to Orchestrate'
+        when downgraded_everweb_in_current_date = 1 --Downgraded a legacy product from prior snapshot date
+        and (
+          (
+            sum(added_monetize_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(
+              increased_monetize_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either Added or Increased a named product in the current snapshot date
+        then 'downgrade - migration -- Everweb to Monetize'
+        when downgraded_find_in_current_date = 1 --Downgraded a legacy product from prior snapshot date
+        and (
+          (
+            sum(added_orchestrate_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(
+              increased_orchestrate_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either Added or Increased a named product in the current snapshot date
+        then 'downgrade - migration -- Personalised Find to Orchestrate'
+        when downgraded_find_in_current_date = 1 --Downgraded a legacy product from prior snapshot date
+        and (
+          (
+            sum(added_monetize_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(
+              increased_monetize_in_current_date
+            ) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either Added or Increased a named product in the current snapshot date
+        then 'downgrade - migration -- Personalised Find to Monetize'
+        when downgraded_ektron_in_current_date = 1 --Downgraded a legacy product from prior snapshot date
+        and (
+          (
+            sum(added_cms_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(increased_cms_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+        ) -- Either Added or Increased a named product in the current snapshot date
+        then 'downgrade - migration -- Ektron to CMS'
+        when downgraded_vis_int_in_current_date = 1 --Downgraded a legacy product from prior snapshot date
+        and (
+          (
+            sum(added_odp_in_current_date) over(
+              partition by mcid,
+              evaluation_period,
+              currency_code
+            )
+          ) > 0
+          or (
+            sum(increased_odp_in_current_date) over(
               partition by mcid,
               evaluation_period,
               currency_code
@@ -800,61 +1127,6 @@ create table sandbox.churn_migration_classifiers as (
       end as "Movement Classification"
     from initial_table_2
   )
-  select it3.evaluation_period,
-    it3.prior_period,
-    it3.current_period,
-    it3.current_end_customer,
-    it3.prior_end_customer,
-    it3.mcid,
-    it3.current_master_customer_id,
-    it3.prior_master_customer_id,
-    it3.current_product_solution,
-    it3.prior_product_solution,
-    it3.currency_code,
-    it3.prior_period_product_arr_usd_ccfx,
-    it3.current_period_product_arr_usd_ccfx,
-    it3.product_arr_change_ccfx,
-    it3.prior_period_product_arr_lcu,
-    it3.current_period_product_arr_lcu,
-    it3.product_arr_change_lcu,
-    it3.product_bridge,
-    it3.winback_period_days,
-    it3.wip_flag,
-    it3.price_increase_amount,
-    it3.subsidiary_entity_name,
-    it3.churn_period,
-    it3.customer_bridge,
-    it3.prior_product_group,
-    it3.current_product_group,
-    it3.current_product_family_class,
-    it3.prior_product_family_class,
-    it3."Downgraded a Licenses  Product in Current Date",
-    it3."Downgraded a Everweb  Product in Current Date",
-    it3."Downgraded a Ektron  Product in Current Date",
-    it3."Downgraded a Personalized Find  Product in Current Date",
-    it3."Downgraded a Visitor Int  Product in Current Date",
-    it3."Churned a Licenses Product in Current Date",
-    it3."Churned a Everweb Product in Current Date",
-    it3."Churned a Ektron Product in Current Date",
-    it3."Churned a Personalized Find Product in Current Date",
-    it3."Churned a Visitor Int Product in Current Date",
-    it3."Added a Cloud Product in Current Date",
-    it3."Added a CMS Product in Current Date",
-    it3."Added a Content Graph Product in Current Date",
-    it3."Added a ODP Product in Current Date",
-    it3."Increased a Cloud Product in Current Date",
-    it3."Increased a CMS Product in Current Date",
-    it3."Increased a Content Graph Product in Current Date",
-    it3."Increased a ODP Product in Current Date",
-    it3."Cloud Product in Current Date with ARR",
-    it3."CMS  Product in Current Date with ARR",
-    it3."Content Graph Product in Current Date with ARR",
-    it3."ODP Product in Current Date with ARR",
-    it3."Licenses Product in Previous Date with ARR",
-    it3."Everweb Product in Previous Date with ARR",
-    it3."Ektron Product in Previous Date with ARR",
-    it3."Personalized Find Product in Previous Date with ARR",
-    it3."Visitor Int Product in Previous Date with ARR",
-    it3."Movement Classification"
-  from initial_table_3 it3
+  SELECT *
+  FROM initial_table_3
 );

@@ -9,7 +9,8 @@ SELECT *,
     WHEN migration_to = 'Y' THEN b.mig_to_name
     ELSE 'USUAL'
   END AS pathways
-FROM ufdm_archive.sst_lcoked_24052024_0935 AS a
+FROM ufdm.sst
+-- ufdm_archive.sst_lcoked_24052024_0935 AS a
   LEFT JOIN ryzlan.sku_to_migration AS b ON a.sku = b.sku_code
 WHERE snapshot_date = (
     SELECT current_period

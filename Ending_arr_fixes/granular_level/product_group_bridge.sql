@@ -20,8 +20,7 @@ CREATE TABLE ryzlan.sst_ending_arr_tester_reversals AS WITH main AS (
         updated_product_group
       )
     ) AS sum_baseline_arr_local_currency
-  FROM ryzlan.sst_ending_arr_1_a_4 --ryzlan.sst_ending_arr_1_a_1 -- ufdm_archive.sst_lcoked_05062024_1704 --ryzlan.sst_ending_arr_tester_final -- ufdm_archive.sst_lcoked_05062024_1704 -- ryzlan.sst_ending_arr_1_1_3--ufdm_archive.sst_lcoked_20052024_0012 --ufdm.sst 
-    --  ufdm_archive.sst_lcoked_20052024_0012
+  FROM ufdm_archive.sst_lcoked_05062024_1704 -- TO BE CHANGED 
 )
 SELECT *,
   arr / CASE
@@ -76,13 +75,8 @@ CREATE TEMP TABLE ending_arr_marker_base AS WITH main AS (
     product_arr_change_ccfx,
     product_arr_change_lcu,
     product_bridge
-  FROM ryzlan.sst_ending_arr_pg_1_a_4 -- ryzlan.sst_ending_arr_pg_1_a_1 -- ufdm_archive.sst_product_bridge_product_group_lcoked_05062024_1704 --ufdm_archive.sst_product_bridge_product_group_lcoked_05062024_1704  --ufdm_archive.sst_product_bridge_product_group_lcoked_20052024_0012--ryzlan.sst_ending_arr_pg_2_c --ufdm.sst_product_bridge_product_group 
-    --    ufdm_archive.sst_product_bridge_product_group_lcoked_20052024_0012--ryzlan.sst_ending_arr_pg_1_1
-    --    WHERE mcid ='34f5dc63-763f-0161-06c1-5577527358d6'
-    --    '9b69584f-dde8-4ece-bc64-f0227b894cf3'
-    --    '57f40a4a-7ce8-ebf1-6cce-f630cb525892'
-    --    '0285c2c4-cb95-e111-92d4-0050568d002c'
-    --'a35b23d4-d22d-188e-4113-46cc1f46b571'
+  FROM ufdm_archive.sst_product_bridge_product_group_lcoked_05062024_1704 -- TO BE CHANGED
+   
 )
 SELECT --    id,
   mcid,
@@ -803,6 +797,7 @@ SELECT snapshot_date,
     'Inserted as part of ending arr fix'
   ) AS ending_arr_comment
 FROM ryzlan.sst_winbacks_missing_records;
+
 DROP TABLE IF EXISTS ryzlan.sst_ending_arr_tester_final;
 CREATE TABLE ryzlan.sst_ending_arr_tester_final AS
 SELECT snapshot_date,

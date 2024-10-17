@@ -18,9 +18,7 @@ CREATE TABLE ryzlan.sst_ending_arr_tester_reversals AS WITH main AS (
         base_currency
       )
     ) AS sum_baseline_arr_local_currency
-  FROM ryzlan.sst_ending_arr_1_a_11 --  ufdm_archive.sst_lcoked_20052024_0012
-    --  ryzlan.sst_ending_arr_fix_4 --  ufdm_archive.sst_lcoked_07052024_1157 --ryzlan.sst_ending_arr_tester_final
-    --  ufdm_archive.sst_lcoked_07052024_1157 --  ryzlan.sst_adhoc
+  FROM ryzlan.sst_ending_arr_1_a_11 -- TO BE CHANGED
 )
 SELECT *,
   arr / CASE
@@ -74,11 +72,7 @@ CREATE TABLE ryzlan.ending_arr_marker AS (
       customer_arr_change_ccfx,
       customer_arr_change_lcu,
       customer_bridge
-    FROM ryzlan.sst_ending_arr_cb_1_a_5 --    ufdm_archive.sst_customer_bridge_lcoked_20052024_0012
-      --    ryzlan.sst_ending_arr_cb_4 --ryzlan.sst_cb_reversal_fix_1
-      --ryzlan.sst_customer_bridge_reversal_fix   --    ryzlan.sst_customer_bridge_reversal_fix
-      --    ufdm_archive.sst_customer_bridge_lcoked_07052024_1157
-      --    ryzlan.sst_customer_bridge_pp
+    FROM ryzlan.sst_ending_arr_cb_1_a_5 -- TO BE CHANGED
   ),
   base AS (
     SELECT --    id,

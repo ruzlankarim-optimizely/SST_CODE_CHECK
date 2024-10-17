@@ -20,8 +20,7 @@ CREATE TABLE ryzlan.sst_ending_arr_tester_reversals AS WITH main AS (
         new_product_solution
       )
     ) AS sum_baseline_arr_local_currency
-  FROM ryzlan.sst_ending_arr_1_a_6 --ryzlan.sst_ending_arr_2_d --ryzlan.sst_ending_arr_3_e--ryzlan.sst_ending_arr_2_d --ufdm.sst 
-    --  ufdm_archive.sst_lcoked_20052024_0012
+  FROM ryzlan.sst_ending_arr_1_a_6 -- TO BE CHANGED
 )
 SELECT *,
   arr / CASE
@@ -76,8 +75,7 @@ CREATE TEMP TABLE ending_arr_marker_base AS WITH main AS (
     product_arr_change_ccfx,
     product_arr_change_lcu,
     product_bridge
-  FROM ryzlan.sst_ending_arr_ps_1_a_2 --ryzlan.sst_ending_arr_ps_2_d --ryzlan.sst_ending_arr_ps_3_e --ryzlan.sst_ending_arr_ps_2_d --ufdm.sst_product_bridge_product_solution -
-    --    WHERE mcid ='34f5dc63-763f-0161-06c1-5577527358d6'
+  FROM ryzlan.sst_ending_arr_ps_1_a_2 -- TO BE CHANGED
 )
 SELECT --    id,
   mcid,

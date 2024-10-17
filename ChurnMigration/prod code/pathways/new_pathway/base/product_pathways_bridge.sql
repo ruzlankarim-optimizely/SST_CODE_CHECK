@@ -4,14 +4,12 @@ where evaluation_period = var_period;
 DROP TABLE IF EXISTS sst_temp;
 CREATE TEMP TABLE sst_temp AS
 SELECT *,
-  CASE
-    WHEN migration_from = 'Y' THEN b.mig_from_name
-    WHEN migration_to = 'Y' THEN b.mig_to_name
+    CASE
+    WHEN migration_from is not null THEN migration_from
+    WHEN migration_to is not null THEN migration_to
     ELSE 'USUAL'
   END AS pathways
 FROM ufdm.sst
--- ufdm_archive.sst_lcoked_24052024_0935 AS a
-  LEFT JOIN ryzlan.sku_to_migration AS b ON a.sku = b.sku_code
 WHERE snapshot_date = (
     SELECT current_period
     FROM ufdm_grey.periods
@@ -142,7 +140,7 @@ SELECT per.evaluation_period,
       coalesce(cla.current_arr_lcu::numeric, 0) - coalesce(cla.prior_arr_lcu::numeric, 0)
     ),
     2
-  ) AS product_arr_change_lcu
+  ) AS product_arr_change_lcu,
   null as product_bridge 
 FROM customer_level_arr_tmp cla
   CROSS JOIN ufdm_grey.periods per
@@ -153,74 +151,4 @@ Insert Into ryzlan.sst_product_pathways_bridge2
 select *
 from arr_product_bridge_tmp;
 END;
-$$ TRUNCATE TABLE ryzlan.sst_product_pathways_bridge2;
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M01');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M02');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M03');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M04');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M05');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M06');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M07');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M08');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M09');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M10');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M11');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2019M12');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M01');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M02');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M03');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M04');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M05');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M06');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M07');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M08');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M09');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M10');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M11');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2020M12');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M01');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M02');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M03');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M04');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M05');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M06');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M07');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M08');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M09');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M10');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M11');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2021M12');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M01');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M02');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M03');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M04');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M05');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M06');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M07');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M08');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M09');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M10');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M11');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2022M12');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M01');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M02');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M03');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M04');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M05');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M06');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M07');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M08');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M09');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M10');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M11');
-SELECT ryzlan.sp_populate_sst_product_pathway2('2023M12');
-ALTER TABLE ryzlan.sst_product_pathways_bridge2
-  RENAME COLUMN prior_arr_usd_ccfx TO prior_period_product_arr_usd_ccfx;
-ALTER TABLE ryzlan.sst_product_pathways_bridge2
-  RENAME COLUMN current_arr_usd_ccfx TO current_period_product_arr_usd_ccfx;
-ALTER TABLE ryzlan.sst_product_pathways_bridge2
-  RENAME COLUMN prior_arr_lcu TO prior_period_product_arr_lcu;
-ALTER TABLE ryzlan.sst_product_pathways_bridge2
-  RENAME COLUMN current_arr_lcu TO current_period_product_arr_lcu;
-ALTER TABLE ryzlan.sst_product_pathways_bridge2
-  RENAME COLUMN baseline_currency TO currency_code;
+$$ 

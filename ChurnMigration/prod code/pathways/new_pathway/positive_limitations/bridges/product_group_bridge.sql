@@ -4,7 +4,7 @@
 DROP TABLE IF EXISTS sandbox.sst_product_group_bridge;
 CREATE TABLE sandbox.sst_product_group_bridge AS
 SELECT *
-FROM ufdm_archive.sst_product_bridge_product_group_lcoked_25062024_2329;
+FROM sandbox_pd.sst_product_bridge_product_group;
 Drop table if exists churn_migration_classifiers_pg;
 CREATE temp table churn_migration_classifiers_pg as (
   WITH initial_table_4 as (
@@ -19,6 +19,11 @@ CREATE temp table churn_migration_classifiers_pg as (
       end as "Movement Type-PF",
       --type of migration movement
       --PG Information
+      concat(
+        rt.current_product_group,
+        '-',
+        rt.prior_product_group
+      ) AS pg_ps,
       rt.product_arr_change_ccfx as pg_arr_change,
       rt.product_arr_change_lcu as pg_arr_change_lcu,
       rt.product_bridge as pg_bridge
@@ -199,30 +204,81 @@ CREATE temp table churn_migration_classifiers_pg as (
       split_part("PG Migration: Classification", ' -- ', 1) bridge_part,
       split_part("PG Migration: Classification", ' -- ', 2) pathways_part
     FROM initial_table_9
-  ),
+    WHERE "PG Migration: Classification" IS NOT NULL
+  ) --  SELECT 
+  --  current_pathways  , prior_pathways  ,
+  --  product_arr_change_ccfx  , "Movement Classification" , pg_arr_change  ,pg_bridge,  "PG Migration: Classification" , "PG Leftover: Classification" , bridge_part ,pathways_part
+  --  FROM adding_classification
+,
   double_classification_fix AS (
     select *,
       sum("PG Migration: Rolled Up Amount") over(
         PARTITION BY evaluation_period,
         mcid,
         bridge_part,
+        pg_ps,
+        --        pathways_part,
         pg_arr_change
       ) AS total_migration_amount_ccfx,
       sum("PG Migration: Rolled Up Amount LCU") over(
         PARTITION BY evaluation_period,
         mcid,
         bridge_part,
+        pg_ps,
+        --        pathways_part,
         pg_arr_change
-      ) AS total_migration_amount_lcu,
+      ) AS total_migration_amount_lcu
+    from adding_classification
+  ),
+  double_classification_fix_2 AS (
+    SELECT *,
       count(mcid) OVER(
         PARTITION BY evaluation_period,
         mcid,
-        pg_bridge,
+        pg_ps,
         bridge_part,
-        pg_arr_change
-      ) AS count_migrations
-    from adding_classification
+        --        pathways_part,
+        total_migration_amount_ccfx
+      ) AS count_migrations,
+      --      DENSE_RANK() OVER (PARTITION BY evaluation_period  , mcid ,bridge_part,pg_arr_change,"PG Migration: Rolled Up Amount" ORDER BY pathways_part ASC ) + 
+      --      DENSE_RANK() OVER (PARTITION BY  evaluation_period  , mcid ,bridge_part,"PG Migration: Rolled Up Amount" ORDER BY pathways_part DESC)  - 1 AS test_migrations ,
+      --    count(  CASE WHEN "Movement Classification" IS NOT NULL THEN "Movement Classification"  END  ) over(PARTITION BY 
+      --    evaluation_period  , 
+      --    mcid , 
+      --    pg_bridge  , 
+      --    pg_arr_change  
+      --    ) AS count_movements ,
+      --    DENSE_RANK() OVER (PARTITION BY evaluation_period  , mcid ,pg_bridge,pg_arr_change   ORDER BY pg_ps ASC ) AS part_1 , 
+      --    DENSE_RANK() OVER (PARTITION BY  evaluation_period  , mcid, pg_bridge,pg_arr_change ORDER BY pg_ps  DESC) AS part_2, 
+      DENSE_RANK() OVER (
+        PARTITION BY evaluation_period,
+        mcid,
+        pg_bridge,
+        pg_arr_change,
+        total_migration_amount_ccfx
+        ORDER BY pg_ps ASC
+      ) + DENSE_RANK() OVER (
+        PARTITION BY evaluation_period,
+        mcid,
+        pg_bridge,
+        pg_arr_change,
+        total_migration_amount_ccfx
+        ORDER BY pg_ps DESC
+      ) - 1 AS count_movements --    DENSE_RANK() OVER (PARTITION BY evaluation_period  , 
+      --    mcid , 
+      --    current_product_solution,
+      --    prior_product_solution ,
+      --    pg_bridge  , 
+      --    pg_arr_change   ORDER BY pg_arr_change ASC ) +
+      --    DENSE_RANK() OVER (PARTITION BY evaluation_period  , 
+      --    mcid , 
+      --    current_product_solution,
+      --    prior_product_solution ,
+      --    pg_bridge  , 
+      --    pg_arr_change ORDER BY pg_arr_change DESC) - 1 AS count_movements
+    FROM double_classification_fix
   ),
+  --    SELECT * FROM double_classification_fix WHERE "PG Migration: Classification" IS NOT NUL
   double_classification_marker AS (
     SELECT *,
       CASE
@@ -242,21 +298,43 @@ CREATE temp table churn_migration_classifiers_pg as (
         ELSE NULL
       END AS new_leftover_value_lcu,
       CASE
-        WHEN count_migrations > 1
-        AND abs(total_migration_amount_ccfx) > abs(pg_arr_change) THEN round(
-          (total_migration_amount_ccfx - pg_arr_change) *(
-            "PG Migration: Rolled Up Amount" / total_migration_amount_ccfx
-          )
+        WHEN (
+          count_migrations > 1
+          OR count_migrations >= count_movements
         )
+        AND (count_migrations <> count_movements)
+        AND abs(total_migration_amount_ccfx) > abs(pg_arr_change) THEN CASE
+          WHEN (
+            "PG Migration: Rolled Up Amount" / total_migration_amount_ccfx
+          ) * 2 = 1 THEN (
+            "PG Migration: Rolled Up Amount" / total_migration_amount_ccfx
+          ) * pg_arr_change
+          ELSE round(
+            (total_migration_amount_ccfx - pg_arr_change) *(
+              "PG Migration: Rolled Up Amount" / total_migration_amount_ccfx
+            )
+          )
+        END
         ELSE NULL
       END AS subtracted_amount_ccfx,
       CASE
-        WHEN count_migrations > 1
-        AND abs(total_migration_amount_ccfx) > abs(pg_arr_change) THEN round(
-          (total_migration_amount_lcu - pg_arr_change_lcu) *(
-            "PG Migration: Rolled Up Amount LCU" / total_migration_amount_lcu
-          )
+        WHEN (
+          count_migrations > 1
+          OR count_migrations >= count_movements
         )
+        AND (count_migrations <> count_movements)
+        AND abs(total_migration_amount_lcu) > abs(pg_arr_change_lcu) THEN CASE
+          WHEN (
+            "PG Migration: Rolled Up Amount LCU" / total_migration_amount_lcu
+          ) * 2 = 1 THEN (
+            "PG Migration: Rolled Up Amount LCU" / total_migration_amount_lcu
+          ) * pg_arr_change_lcu
+          ELSE round(
+            (total_migration_amount_lcu - pg_arr_change_lcu) *(
+              "PG Migration: Rolled Up Amount LCU" / total_migration_amount_lcu
+            )
+          )
+        END
         ELSE NULL
       END AS subtracted_amount_lcu,
       CASE
@@ -272,12 +350,16 @@ CREATE temp table churn_migration_classifiers_pg as (
         ELSE FALSE
       END AS double_migration_second_case,
       CASE
-        WHEN count_migrations > 1
+        WHEN (
+          count_migrations > 1
+          OR count_migrations >= count_movements
+        )
+        AND (count_migrations <> count_movements)
         AND abs(total_migration_amount_ccfx) > abs(pg_arr_change) THEN TRUE
         ELSE FALSE
       END AS double_migration_third_case
-    FROM double_classification_fix
-  ) --    SELECT * FROM double_classification_marker   
+    FROM double_classification_fix_2
+  ) --          SELECT * FROM double_classification_marker    
   SELECT evaluation_period,
     prior_period,
     current_period,

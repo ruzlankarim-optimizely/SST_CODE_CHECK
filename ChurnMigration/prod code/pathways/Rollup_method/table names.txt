@@ -1,0 +1,71 @@
+ufdm_archive.monthly_metrics_lcoked_10122024_1354
+ufdm_archive.amazing_spider_man_lcoked_10122024_1354
+ufdm_archive.spider_man_lcoked_10122024_1354
+ufdm_archive.peter_parker_lcoked_10122024_1354
+ufdm_archive.arr_lcoked_10122024_1354
+ufdm_archive.sst_adhoc_lcoked_10122024_1354
+
+--beforechurnmigration
+ufdm_archive.sst_customer_bridge_lcoked_10122024_1354
+ufdm_archive.sst_product_bridge_product_group_lcoked_10122024_1354
+ufdm_archive.sst_product_bridge_product_solution_lcoked_10122024_1354
+ufdm_archive.sst_customer_bridge_core_lcoked_10122024_1354
+ufdm_archive.sst_customer_bridge_cloud_lcoked_10122024_1354
+ufdm_archive.sst_pb_product_group_cloud_license_lcoked_10122024_1354
+ufdm_archive.sst_pb_product_solution_cloud_license_lcoked_10122024_1354
+
+--afterchurnmigration
+ufdm_archive.sst_product_group_churn_mig_lcoked_10122024_1354
+ufdm_archive.sst_product_solution_churn_mig_lcoked_10122024_1354
+ufdm_archive.sst_customer_bridge_churn_mig_lcoked_10122024_1354
+ufdm_archive.sst_product_group_cloud_churn_mig_lcoked_10122024_1354
+ufdm_archive.sst_product_solution_cloud_churn_mig_lcoked_10122024_1354
+ufdm_archive.sst_customer_bridge_core_churn_mig_lcoked_10122024_1354
+ufdm_archive.sst_customer_bridge_cloud_churn_mig_lcoked_10122024_1354
+
+
+--classifiertablesforchurnmigration
+ufdm_archive.churn_migration_classifiers_lcoked_10122024_1354
+ufdm_archive.sst_product_pathways_bridge_lcoked_10122024_1354
+
+--price ramp and price uplift tables used in bridges
+ufdm_archive.price_ramps_lcoked_10122024_1354
+ufdm_archive.price_uplift_lcoked_10122024_1354
+
+--example 
+1d602838-edd7-e611-80f1-c4346bad92d0
+snapshot: 8/31/2024
+ 
+neg migration variance 2024 
+dg -293045.60
+ds -187705.29
+tt -522799.19
+
+dg -293044.68
+ds -187704.68
+tt -522797.66
+
+cs without churn -569,742.81
+pg_without churn -569,742.81
+
+cs_with churn -569,741.28
+pg_with churm -569,742.81
+
+
+just migration 
+pg -46,211.34
+cs -184,845.36
+
+
+pg level 
+dg -296,292.57  cm -46,211.34 not_cm -250,081.23
+ds -187,705.29     0          not_cm -187,705.29
+upR -42,048.3
+prR -43,696.65
+
+
+cs level 
+dg -293,044.68 cm -92,422.68  not_cm -200,622.00
+ds -187,704.68 cm -92,422.68  not_cm -95282.00
+upR -42,048.3 
+prR -46,943.62

@@ -1,0 +1,30 @@
+
+Line of Business (LOB) = ‘Licenses’ > Line of Business (LOB) = ‘Cloud’  & Solution Li = Orch or Monetize or CMP
+- Product = ‘Everweb’ > Prod Solution Li = Orch or Monetize or CMP
+- Product = ‘Ektron’ > Product = ‘Content Management System (CMS)’ 
+- Product =’Find’ > Prod Solution Li = Orch or Monetize or CMP
+- Product =’Visitor Intelligence’ > Product = ‘Data Platform (ODP)’
+
+
+
+-- tables 
+-- max numbers approach 
+ufdm_archive.sst_adhoc_lcoked_18022025_1547;
+ufdm_archive.churn_migration_classifiers_lcoked_18022025_1547
+ufdm_archive.sst_product_pathways_bridge_lcoked_18022025_1547
+ 
+ufdm_archive.sst_customer_bridge_lcoked_18022025_1547;
+ufdm_archive.sst_customer_bridge_churn_mig_lcoked_18022025_1547;
+
+ufdm_archive.sst_product_bridge_product_group_lcoked_18022025_1547
+ufdm_archive.sst_product_group_churn_mig_lcoked_18022025_1547
+
+ufdm_archive.sst_pb_product_group_cloud_license_lcoked_18022025_1547
+ufdm_archive.sst_product_group_cloud_churn_mig_lcoked_18022025_1547
+
+ufdm_archive.sst_pb_product_solution_cloud_license_lcoked_18022025_1547
+ufdm_archive.sst_product_solution_cloud_churn_mig_lcoked_18022025_1547
+
+
+-- customers 
+00855ad7-1ba5-45bc-b744-2c60ae82b5e1 2025M01 Up Sell - migration Licenses to CMS

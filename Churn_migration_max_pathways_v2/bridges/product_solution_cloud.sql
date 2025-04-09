@@ -1,7 +1,7 @@
 DROP TABLE IF EXISTS sandbox.sst_product_solution_bridge_rollup_cm_cloud;
 CREATE TABLE sandbox.sst_product_solution_bridge_rollup_cm_cloud AS
 SELECT *
-FROM ufdm_archive.sst_pb_product_solution_cloud_license_lcoked_18022025_1547
+FROM ufdm_archive.sst_pb_product_solution_cloud_license_lcoked_18032025_0244
 
 ;
 
@@ -59,7 +59,8 @@ where product_bridge in (
 --         'Price Uplift',
         'Downgrade'
     )
-
+-- and    a.mcid = '0a9a1cc5-ddaf-e911-a96a-000d3a4416ab'
+-- and a.evaluation_period = '2024M01'
 ;
 
 
@@ -78,7 +79,9 @@ select
     product_arr_change_lcu ,
     split_part("Movement Classification", '--',1) as bridge_path,
     split_part("Movement Classification", '--',2) as migration_pathways
-from sandbox.churn_migration_classifiers_max_value
+from sandbox.churn_migration_classifiers_max_value_v2
+-- where mcid = '0a9a1cc5-ddaf-e911-a96a-000d3a4416ab'
+-- and evaluation_period = '2024M01'
 
 )
 , pg_bridge_mod as (
@@ -104,7 +107,7 @@ and lower(trim(a.pathways)) = lower(trim(b.migration_pathways))
 and coalesce(a.current_product_group , a.prior_product_group ) = coalesce(b.current_product_group , b.prior_product_group)
 )
 
---    select * from pg_bridge_mod
+--    select * from pg_bridge_mod;
 -- where  mcid = '6cb082b5-52a2-dd11-a48c-0018717a8c82'
 -- and evaluation_period = '2024M05';
 
@@ -131,8 +134,9 @@ and a.mcid = b.mcid
 and a.currency_code = b.currency_code
 and coalesce(a.current_product_solution , a.prior_product_solution ) = coalesce(b.current_product_solution , b.prior_product_solution)
 and a.pos_neg_flag = b.pos_neg_flag
+and lower(trim(split_part(a.product_bridge , '- migration',1))) = lower(trim(b.product_bridge))
 and ( a.product_bridge ilike '%migration'
-    or lower(trim(split_part(a.product_bridge , '- migration',1))) = lower(trim(b.product_bridge))
+--     or lower(trim(split_part(a.product_bridge , '- migration',1))) = lower(trim(b.product_bridge))
        )
 )
 
@@ -304,6 +308,9 @@ select
 from flagging_table
 
 );
+
+-- select * from sandbox.solution_classifier_migration_joiner_cloud
+-- where Migration_classification ilike('%migration%');
 
 drop table if exists sandbox.churn_migration_limitation_ps_cloud;
 create table sandbox.churn_migration_limitation_ps_cloud as

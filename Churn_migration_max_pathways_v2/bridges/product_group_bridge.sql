@@ -1,11 +1,11 @@
 -- New script in dw-prod-rds-master.cr9dekxonyuj.us-east-1.rds.amaz.
 -- Date: Jun 27, 2024
 -- Time: 3:46:59 PM
--- select * from sandbox.churn_migration_classifiers_max_value limit 1 ;
+-- select * from sandbox.churn_migration_classifiers_max_value_v2 limit 1 ;
 DROP TABLE IF EXISTS sandbox.sst_product_group_bridge;
 CREATE TABLE sandbox.sst_product_group_bridge AS
 SELECT *
-FROM ufdm_archive.sst_product_bridge_product_group_lcoked_18022025_1547;
+FROM ufdm_archive.sst_product_bridge_product_group_lcoked_18032025_0244;
 Drop table if exists churn_migration_classifiers_pg;
 CREATE temp table churn_migration_classifiers_pg as (
   WITH initial_table_4 as (
@@ -28,7 +28,7 @@ CREATE temp table churn_migration_classifiers_pg as (
       rt.product_arr_change_ccfx as pg_arr_change,
       rt.product_arr_change_lcu as pg_arr_change_lcu,
       rt.product_bridge as pg_bridge
-    FROM sandbox.churn_migration_classifiers_max_value it3
+    FROM sandbox.churn_migration_classifiers_max_value_v2 it3
       left join sandbox.sst_product_group_bridge rt -- replace with product group bridge
       -- Here
       on it3.evaluation_period = rt.evaluation_period
@@ -50,7 +50,9 @@ CREATE temp table churn_migration_classifiers_pg as (
         'Downsell',
         'Price Uplift',
         'Downgrade'
-      ) --      AND it3.mcid = 'bbeaf423-e118-e211-83c1-0050568d002c'
+      )
+--         and  it3.evaluation_period = '2024M12'
+-- and it3.mcid = '40f26d31-60d3-c79b-f55c-ef4f3f229207'
       --         'f677c904-1faa-db11-8952-0018717a8c82'
       --
       --      AND it3.evaluation_period = var_period
@@ -153,7 +155,9 @@ CREATE temp table churn_migration_classifiers_pg as (
         else null
       end as "PG Leftover: Rolled Up Amount" --Bring in the product solution columns as well -- to roll it up on the PS level
     from initial_table_7
-  ),
+  )
+--        select * from initial_table_8
+       ,
   initial_table_9 as (
     select *,
       (
@@ -210,6 +214,8 @@ CREATE temp table churn_migration_classifiers_pg as (
   --  current_pathways  , prior_pathways  ,
   --  product_arr_change_ccfx  , "Movement Classification" , pg_arr_change  ,pg_bridge,  "PG Migration: Classification" , "PG Leftover: Classification" , bridge_part ,pathways_part
   --  FROM adding_classification
+
+--        select * from adding_classification ;
 ,
   double_classification_fix AS (
     select *,

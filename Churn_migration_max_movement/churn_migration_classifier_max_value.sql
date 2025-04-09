@@ -1,9 +1,11 @@
 DROP TABLE IF EXISTS sandbox.churn_migration_classifiers_max_value;
 create table sandbox.churn_migration_classifiers_max_value as (
 with initial_table as (
-  select *
+  select  *
   from ryzlan.sst_product_pathways_bridge2
   where mcid is not null and mcid <> '-'
+--   and mcid = 'b68a5308-53c7-e411-9afb-0050568d2da8'
+--   and evaluation_period = '2019M09'
 ),
 initial_table_2 as (
   select *,
@@ -835,7 +837,20 @@ from initial_table_4)
 -- select * from initial_table_5;
 , initial_table_6 as (
   select
+      *,
+      max(case when
+          lower(current_pathways) in ('orchestrate','monetize','cmp','cms','odp')
+          and  lower(max_flag_descriptions) ILIKE '%' || lower(current_pathways) || '%'
+          then current_period_product_arr_usd_ccfx end)
+      over(
+          partition by evaluation_period , mcid , currency_code
+          order by current_period_product_arr_usd_ccfx desc
+          ) as max_value_migration_to
+from (
+  select
       evaluation_period  ,
+      current_period ,
+      prior_period ,
       mcid ,
       currency_code ,
       current_product_group,
@@ -852,19 +867,54 @@ from initial_table_4)
       product_arr_change_lcu,
       active_flag_count ,
       flag_descriptions,
-      max(current_period_product_arr_usd_ccfx)
-      over(
-          partition by evaluation_period , mcid , currency_code
-          order by current_period_product_arr_usd_ccfx desc
-          ) as max_value_migration_to
-
+      max(case when active_flag_count > 1 then flag_descriptions else null end ) over(partition by mcid, evaluation_period, currency_code) as max_flag_descriptions
   from initial_table_5
+     ) as a
 
 )
 
-, initial_table_7 as (
+   , initial_table_7 as (
+       select
+              evaluation_period  ,
+              current_period ,
+              prior_period ,
+              mcid ,
+              currency_code ,
+              current_product_group,
+              prior_product_group,
+              current_product_solution,
+              prior_product_solution,
+              current_pathways,
+              prior_pathways,
+              prior_period_product_arr_lcu,
+              current_period_product_arr_lcu,
+              prior_period_product_arr_usd_ccfx,
+              current_period_product_arr_usd_ccfx,
+              product_arr_change_ccfx,
+              product_arr_change_lcu,
+              active_flag_count ,
+              flag_descriptions,
+              max_flag_descriptions,
+              upper(max(selected_mig_to) over(partition by mcid,evaluation_period,currency_code )) as selected_mig_to
+
+        from (
+          select
+               *,
+              case when
+                  lower(current_pathways) in ('orchestrate','monetize','cmp','cms','odp') and
+                  max_value_migration_to = current_period_product_arr_usd_ccfx
+                  then current_pathways else null end as selected_mig_to
+          from initial_table_6
+        ) as a
+)
+--    select * from initial_table_7 ;
+
+
+, initial_table_8 as (
 select
   evaluation_period  ,
+  current_period ,
+  prior_period ,
   mcid ,
   currency_code ,
   current_product_group,
@@ -885,57 +935,47 @@ select
   upper(max(selected_mig_from)over(partition by mcid, evaluation_period, currency_code)) as selected_mig_from
 from (
     select
-        *,case when
-        max(case when lower(prior_pathways) <> lower(selected_mig_to) then prior_period_product_arr_usd_ccfx end) over(partition by evaluation_period , mcid , currency_code order by prior_period_product_arr_usd_ccfx desc
-      ) = prior_period_product_arr_usd_ccfx then prior_pathways else null end as selected_mig_from
-    FROM (
-        select
-              evaluation_period  ,
-              mcid ,
-              currency_code ,
-              current_product_group,
-              prior_product_group,
-              current_product_solution,
-              prior_product_solution,
-              current_pathways,
-              prior_pathways,
-              prior_period_product_arr_lcu,
-              current_period_product_arr_lcu,
-              prior_period_product_arr_usd_ccfx,
-              current_period_product_arr_usd_ccfx,
-              product_arr_change_ccfx,
-              product_arr_change_lcu,
-              active_flag_count ,
-              flag_descriptions,
-              upper(max(selected_mig_to) over(partition by mcid,evaluation_period,currency_code )) as selected_mig_to
-        from (
-          select
-               *,
-              case when max_value_migration_to = current_period_product_arr_usd_ccfx then current_pathways else null end as selected_mig_to
-          from initial_table_6
-        ) as a
-    ) as a
+        *,
+        case when
+            max(case when
+                    lower(prior_pathways) <> lower(selected_mig_to)
+                    and lower(prior_pathways) in ('licenses','everweb','ektron','find','visitor intelligence')
+                    and  lower(max_flag_descriptions) ILIKE '%' || lower(prior_pathways) || '%'
+                    then prior_period_product_arr_usd_ccfx end
+               )
+            over(partition by evaluation_period , mcid , currency_code ) = prior_period_product_arr_usd_ccfx
+            then prior_pathways else null end as selected_mig_from
+    FROM initial_table_7
   ) as a
 )
 
+
+
+-- select * from initial_table_9;
 , base as (
-select * from (
-    select
-    mcid ,
-    evaluation_period,
-    currency_code,
-    trim(unnest(string_to_array(flag_descriptions, ','))) AS individual_value
-    from initial_table_7
-    where active_flag_count >1) as a
+select *,
+       UPPER(SPLIT_PART(individual_value, ' to ', 1)) AS migration_from,
+       UPPER(SPLIT_PART(individual_value, ' to ', 2)) AS migration_to
+from (
+            select
+            mcid ,
+            evaluation_period,
+            currency_code,
+            trim(unnest(string_to_array(flag_descriptions, ','))) AS individual_value
+            from initial_table_8
+            where active_flag_count >1) as a
 where individual_value is not null and individual_value <> ''
 group by 1,2,3,4
 )
 
 -- select * from base;
 
+
 , final_table as (
 select
   evaluation_period  ,
+  current_period ,
+  prior_period ,
   mcid ,
   currency_code ,
   current_product_group,
@@ -955,12 +995,14 @@ select
   case when active_flag_count > 1 then
       case when flag_descriptions <> '' then individual_value else null end
       else (string_to_array(flag_descriptions, ','))[2] end
-      as "Migration Classification"
+      as "Movement Classification"
 from (
     select
         a.*,
-        b.individual_value
-    from initial_table_7 as a
+        b.individual_value,
+        b.migration_from,
+        b.migration_to
+    from initial_table_8 as a
     left join base as b
     on a.mcid = b.mcid
     and a.evaluation_period = b.evaluation_period
@@ -971,5 +1013,19 @@ from (
     and a.active_flag_count > 1
     )as a
 )
+
 select * from final_table
 );
+, marker as (
+select * from final_table
+where flag_descriptions <> '' and ("Movement Classification" is  null or "Movement Classification" = '')
+)
+
+select * from marker ;
+select a.*
+from initial_table_8 as a
+join marker as b
+on a.evaluation_period = b.evaluation_period
+and a.mcid = b.mcid
+and a.currency_code = b.currency_code;
+-- );

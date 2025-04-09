@@ -1,0 +1,45 @@
+Migration From	                      ------  Migration To
+Commerce Connect LI                   ------	Monetize or Content Management (CMS)
+Commerce Connect M&S                  ------	Monetize or Content Management (CMS)
+Configured Commerce LI                ------	Monetize or Content Management (CMS)
+Configured Commerce M&S               ------	Monetize or Content Management (CMS)
+Content Management PaaS LI            ------	Monetize or Content Management (CMS)
+Content Management PaaS M&S           ------	Monetize or Content Management (CMS)
+EOL - Everweb                         ------	Monetize or Content Management (CMS)
+EOL - Legacy Visitor Intelligence	    ------  ODP
+Legacy Ektron                         ------	Monetize or Content Management (CMS)
+Legacy Ektron M&S	                    ------  Monetize or Content Management (CMS)
+Search & Navigation - Standalone      ------ 	Monetize or Content Management (CMS)
+Search & Navigation - Standalone M&S  ------	Monetize or Content Management (CMS)
+
+MIGRATION FROM        ----- MIGRATION TO 
+Licenses              ----- Orchestrate / Monetize / CMP /CMS
+Everweb               ----- Orchestrate / Monetize / CMP /CMS
+Ektron                ----- Content management system (CMS)
+Find                  ----- Orchestrate / Monetize / CMP /CMS
+Visitor Intelligence  ----- Data Platfrom (ODP)
+
+-- tables 
+-- max numbers approach 
+ufdm_archive.sst_adhoc_lcoked_18032025_0244;
+ufdm_archive.churn_migration_classifiers_lcoked_18032025_0244
+ufdm_archive.sst_product_pathways_bridge_lcoked_18032025_0244
+ 
+ufdm_archive.sst_customer_bridge_lcoked_18032025_0244;
+ufdm_archive.sst_customer_bridge_churn_mig_lcoked_18032025_0244;
+
+ufdm_archive.sst_product_bridge_product_group_lcoked_18032025_0244
+ufdm_archive.sst_product_group_churn_mig_lcoked_18032025_0244
+
+ufdm_archive.sst_pb_product_group_cloud_license_lcoked_18032025_0244
+ufdm_archive.sst_product_group_cloud_churn_mig_lcoked_18032025_0244
+
+ufdm_archive.sst_pb_product_solution_cloud_license_lcoked_18032025_0244
+ufdm_archive.sst_product_solution_cloud_churn_mig_lcoked_18032025_0244
+
+
+
+
+
+
+ 

@@ -167,3 +167,4 @@ cython_debug/
 #.idea/
 .vscode/settings.json
 .vscode/settings.json
+.qodo

@@ -35,7 +35,7 @@ CREATE temp table churn_migration_classifiers_pg as (
       rt.product_arr_change_ccfx as pg_arr_change,
       rt.product_arr_change_lcu as pg_arr_change_lcu,
       rt.product_bridge as pg_bridge
-    FROM sandbox.churn_migration_classifiers_max_value_v2_2 it3
+    FROM sandbox.churn_migration_classifiers_max_value_v2_2_split it3
       left join sandbox.sst_product_group_bridge_cloud rt -- replace with product group bridge
       -- Here
       on it3.evaluation_period = rt.evaluation_period
@@ -929,4 +929,4 @@ select evaluation_period,
   churn_period,
   customer_bridge,
   pathways
-FROM sandbox.temp_arr_table;
+FROM sandbox.temp_arr_table;\

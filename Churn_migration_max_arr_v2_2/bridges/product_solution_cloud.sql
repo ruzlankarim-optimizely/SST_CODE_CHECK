@@ -79,7 +79,7 @@ select
     product_arr_change_lcu ,
     split_part("Movement Classification", '--',1) as bridge_path,
     split_part("Movement Classification", '--',2) as migration_pathways
-from sandbox.churn_migration_classifiers_max_value_v2_2
+from sandbox.churn_migration_classifiers_max_value_v2_2_split
 -- where mcid = '0a9a1cc5-ddaf-e911-a96a-000d3a4416ab'
 -- and evaluation_period = '2024M01'
 

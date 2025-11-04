@@ -1,196 +1,275 @@
--- create table sandbox.sst_customer_bridge_rollover_cm_25042025_00_53
--- as select * from sandbox.sst_customer_bridge_rollover_cm;
-
-
 DROP TABLE IF EXISTS sandbox.sst_customer_bridge_rollover_cm;
 CREATE TABLE sandbox.sst_customer_bridge_rollover_cm AS
 SELECT *
-FROM ufdm_archive.sst_customer_bridge_lcoked_17042025_2009 scb;
+FROM sandbox_pd.sst_customer_bridge scb;
 
 
 -- product group rollup
 
 Drop table if exists sandbox.customer_product_migration_joiner;
 create table sandbox.customer_product_migration_joiner as (
-with base_product_group as (
-select
+with    base_product_group AS (
+  SELECT
     evaluation_period,
-    DATE(TO_DATE(evaluation_period, 'YYYY"M"MM')+ interval '1 month - 1 day') as snapshot_date,
+    DATE(TO_DATE(evaluation_period, 'YYYY"M"MM') + INTERVAL '1 month - 1 day') AS snapshot_date,
     mcid,
---     concat(current_product_group,'-',prior_product_group) as product_group,
     product_bridge,
     pathways,
     product_arr_change_ccfx,
     product_arr_change_lcu,
     currency_code,
-    case
-        when product_arr_change_ccfx > 0 then '+'
-        when product_arr_change_ccfx < 0 then '-'
-        else 'flat'
-    end as pos_neg_flag
-from sandbox.sst_product_solution_bridge_rollup_cm_cloud
-where 1 = 1
--- and mcid = '00855ad7-1ba5-45bc-b744-2c60ae82b5e1'
--- 	and evaluation_period = '2025M01'
-)
-, cb_part as (
-    select
+    CASE
+      WHEN product_arr_change_ccfx > 0 THEN '+'
+      WHEN product_arr_change_ccfx < 0 THEN '-'
+      ELSE 'flat'
+    END AS pos_neg_flag
+  FROM sandbox.sst_product_solution_bridge_rollup_cm_cloud
+),
+
+pg_sub_part AS (
+  SELECT
     evaluation_period,
-    DATE(TO_DATE(evaluation_period, 'YYYY"M"MM')+ interval '1 month - 1 day') as snapshot_date,
+    mcid,
+    -- everything before “- migration”
+    split_part(product_bridge, '- migration', 1) AS bridge_part,
+    -- flag only if text ends in “- migration”
+    CASE
+      WHEN product_bridge ILIKE '%- migration' THEN 'migration'
+      ELSE NULL
+    END AS migration_part,
+    pathways,
+    product_arr_change_ccfx,
+    product_arr_change_lcu,
+    currency_code,
+    pos_neg_flag
+  FROM base_product_group
+),
+
+pg_part AS (
+  SELECT
+    evaluation_period,
+    mcid,
+    currency_code,
+    bridge_part,
+    migration_part,
+    pathways,
+    pos_neg_flag,
+    SUM(product_arr_change_ccfx) AS product_arr_change_ccfx,
+    SUM(product_arr_change_lcu)  AS product_arr_change_lcu
+  FROM pg_sub_part
+  WHERE migration_part IS NOT NULL
+  GROUP BY
+    evaluation_period,
+    mcid,
+    currency_code,
+    bridge_part,
+    migration_part,
+    pathways,
+    pos_neg_flag
+),
+
+-- 2) Pull customer_bridge buckets, limiting to the four categories:
+cb_part AS (
+  SELECT
+    evaluation_period,
+    DATE(TO_DATE(evaluation_period, 'YYYY"M"MM') + INTERVAL '1 month - 1 day') AS snapshot_date,
     mcid,
     customer_bridge,
     customer_arr_change_ccfx,
     customer_arr_change_lcu,
     baseline_currency,
-    case
-        when customer_arr_change_ccfx > 0 then '+'
-        when customer_arr_change_ccfx < 0 then '-'
-        else 'flat'
-    end as pos_neg_flag
-from sandbox.sst_customer_bridge_rollover_cm
-where 1=1
-and customer_bridge in (
---     'Flat',
---     'New',
-    'Up Sell',
---     'Churn',
-    'Cross-sell',
-    'Downsell',
---     'Price Uplift',
-    'Downgrade'
-    )
--- and mcid = '00855ad7-1ba5-45bc-b744-2c60ae82b5e1'
--- 	and evaluation_period = '2025M01'
-)
-,pg_sub_part as (
-select
-    evaluation_period,
-    mcid ,
---     product_group ,
-    split_part(product_bridge, '- migration',1) as bridge_part ,
-    case when product_bridge ilike '%- migration' then 'migration' else null end as migration_part,
-    pathways,
-    product_arr_change_ccfx,
-    product_arr_change_lcu ,
-    currency_code,
-    pos_neg_flag
-from base_product_group
-)
-, pg_part as (
-select
-    evaluation_period ,
-    mcid,
-    currency_code ,
---     product_group ,
-    bridge_part ,
-    migration_part ,
-    pathways ,
-    pos_neg_flag,
-    sum(product_arr_change_ccfx ) as product_arr_change_ccfx,
-    sum(product_arr_change_lcu) as product_arr_change_lcu
-from pg_sub_part
-where migration_part is not null
-group by 1,2,3,4,5,6,7
-)
+    CASE
+      WHEN customer_arr_change_ccfx > 0 THEN '+'
+      WHEN customer_arr_change_ccfx < 0 THEN '-'
+      ELSE 'flat'
+    END AS pos_neg_flag
+  FROM sandbox_pd.sst_customer_bridge
+  WHERE customer_bridge IN ('Up Sell', 'Cross-sell', 'Downsell', 'Downgrade')
+),
 
---    select * from pg_part;
+-- 3) Join customer to product (only same mcid, same period, same currency, same sign):
+InitialJoin AS (
+  SELECT
+    cb.evaluation_period              AS cb_evaluation_period,
+    cb.snapshot_date,
+    cb.mcid,
+    cb.customer_bridge,
+    cb.customer_arr_change_ccfx,
+    cb.customer_arr_change_lcu,
+    cb.baseline_currency,
+    cb.pos_neg_flag                   AS cb_pos_neg_flag,
+    pg.currency_code,
+    pg.bridge_part,
+    pg.migration_part,
+    pg.pathways,
+    pg.pos_neg_flag                   AS pg_pos_neg_flag,
+    pg.product_arr_change_ccfx,
+    pg.product_arr_change_lcu,
 
+    -- guard against divide-by-zero (NULL if customer_arr_change_ccfx = 0)
+    CASE
+      WHEN cb.customer_arr_change_ccfx = 0 THEN NULL
+      ELSE
+        100.0 * ABS(
+          ABS(cb.customer_arr_change_ccfx) - ABS(pg.product_arr_change_ccfx)
+        ) / ABS(cb.customer_arr_change_ccfx)
+    END AS arr_change_difference
 
+  FROM cb_part cb
+  JOIN pg_part pg
+    ON cb.mcid = pg.mcid
+   AND cb.evaluation_period = pg.evaluation_period
+   AND cb.baseline_currency = pg.currency_code
+   AND cb.pos_neg_flag = pg.pos_neg_flag
+  WHERE pg.pathways IS NOT NULL
+),
 
-
-
-
-
-, InitialJoin AS (
-    SELECT
-        cb.evaluation_period AS cb_evaluation_period,
-        cb.snapshot_date,
-        cb.mcid,
-        cb.customer_bridge,
-        cb.customer_arr_change_ccfx,
-        cb.customer_arr_change_lcu,
-        cb.baseline_currency,
-        cb.pos_neg_flag AS cb_pos_neg_flag,
-        pg.currency_code,
-        pg.bridge_part,
-        pg.migration_part,
-        pg.pathways,
-        pg.pos_neg_flag AS pg_pos_neg_flag,
-        pg.product_arr_change_ccfx,
-        pg.product_arr_change_lcu,
-        ABS(cb.customer_arr_change_ccfx - pg.product_arr_change_ccfx) AS arr_change_difference
-    FROM
-        cb_part cb
-    INNER JOIN
-        pg_part pg ON cb.mcid = pg.mcid
-                    AND cb.evaluation_period = pg.evaluation_period
-                    AND cb.baseline_currency = pg.currency_code
-                    and cb.pos_neg_flag = pg.pos_neg_flag
-    WHERE pg.pathways IS NOT NULL
---     and
---     ABS(cb.customer_arr_change_ccfx - pg.product_arr_change_ccfx) <= 10
---     OR cb.customer_bridge = pg.bridge_part
---     OR cb.pos_neg_flag = pg.pos_neg_flag
-)
---    select * from InitialJoin;
-   ,
+-- 4) Rank each joined row by smallest ARR gap within (mcid, period, currency, pathways):
 RankedJoins AS (
-    SELECT
-        ij.*,
-        CASE
-           WHEN ij.arr_change_difference <= 10  THEN 1  -- 1st priority: Close ARR match
-         else 2 end
-        as flg_1,
-         case when LOWER(TRIM(ij.customer_bridge)) = LOWER(TRIM(ij.bridge_part))  then 1 else 2 end as flg_2,
-        ROW_NUMBER() OVER (
-                PARTITION BY ij.mcid, ij.cb_evaluation_period, ij.baseline_currency,ij.pathways
-                ORDER BY ij.arr_change_difference
-            ) AS best_match_rank
---         ROW_NUMBER() OVER (PARTITION BY ij.mcid, ij.cb_evaluation_period, ij.baseline_currency
---                            ORDER BY
---                                CASE
---                                    WHEN ij.arr_change_difference <= 10 THEN 1  -- 1st priority: Close ARR match
---                                    ELSE 2
---                                END ASC,
---                                CASE
---                                    WHEN LOWER(TRIM(ij.customer_bridge)) = LOWER(TRIM(ij.bridge_part)) THEN 1  -- 2nd priority: Match bridge names
---                                    ELSE 2
---                                END ASC
---                            ) AS rn
---         MIN(ij.arr_change_difference) OVER (PARTITION BY ij.mcid, ij.cb_evaluation_period, ij.baseline_currency) AS min_arr_difference,
---         MIN(CASE WHEN ij.arr_change_difference <= 10 THEN 0 ELSE 1 END) OVER (PARTITION BY ij.mcid, ij.cb_evaluation_period, ij.baseline_currency) as has_close_arr_match
-    FROM
-        InitialJoin ij
+  SELECT
+    ij.*,
+    CASE
+      WHEN ij.arr_change_difference <= 3 THEN 1
+      ELSE 2
+    END AS flg_1,  -- 1 if ≤3% gap
+
+    CASE
+      WHEN LOWER(TRIM(ij.customer_bridge)) = LOWER(TRIM(ij.bridge_part)) THEN 1
+      ELSE 2
+    END AS flg_2,  -- 1 if exact text match
+
+    ROW_NUMBER() OVER (
+      PARTITION BY
+        ij.mcid,
+        ij.cb_evaluation_period,
+        ij.baseline_currency,
+        ij.pathways,
+        ij.customer_bridge,
+        ij.customer_arr_change_ccfx
+      ORDER BY
+        ij.arr_change_difference
+    ) AS best_match_rank
+
+  FROM InitialJoin ij
+),
+
+-- 5a) Pick out any row where flg_1 = 1 (close match):
+first_case AS (
+  SELECT *
+  FROM RankedJoins
+  WHERE flg_1 = 1
+),
+
+-- 5b) Fallback: for any customer_bucket that never got a flg_1=1, collect all rows:
+second_part AS (
+  SELECT *
+  FROM RankedJoins rj
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM RankedJoins rj2
+    WHERE rj2.flg_1 = 1
+      AND rj2.mcid = rj.mcid
+      AND rj2.cb_evaluation_period = rj.cb_evaluation_period
+      AND rj2.baseline_currency = rj.baseline_currency
+      AND rj2.customer_arr_change_ccfx = rj.customer_arr_change_ccfx
+      AND rj2.customer_bridge = rj.customer_bridge
+  )
+),
+
+-- 5c) Further remove from fallback any product_bucket that was used as flg_1=1 by anyone:
+second_part_two AS (
+  SELECT *
+  FROM second_part rj
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM RankedJoins rj2
+    WHERE rj2.flg_1 = 1
+      AND rj2.mcid = rj.mcid
+      AND rj2.cb_evaluation_period = rj.cb_evaluation_period
+      AND rj2.currency_code = rj.currency_code
+      AND rj2.pathways = rj.pathways
+      AND rj2.bridge_part = rj.bridge_part
+      AND rj2.product_arr_change_ccfx = rj.product_arr_change_ccfx
+  )
+),
+
+-- 6) Return all “first_case” (flg_1=1) + all “fallbacks” (second_part_two)
+final AS (
+  SELECT *
+  FROM first_case
+
+  UNION
+
+  SELECT *
+  FROM second_part_two
+),
+
+-- 7) De-duplicate on (cb_evaluation_period, snapshot_date, mcid, customer_bridge, customer_arr_change_ccfx, cb_pos_neg_flag, currency_code)
+deduped AS (
+  SELECT
+    f.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY
+        f.cb_evaluation_period,
+        f.snapshot_date,
+        f.mcid,
+        f.customer_bridge,
+        f.customer_arr_change_ccfx,
+        f.cb_pos_neg_flag,
+        f.currency_code
+      ORDER BY
+        f.flg_1 ASC,              -- prefer flg_1 = 1
+        f.flg_2 ASC,              -- then prefer flg_2 = 1
+        f.arr_change_difference   -- then the smallest difference
+    ) AS dedup_customer_side ,
+      ROW_NUMBER() OVER (
+      PARTITION BY
+        f.cb_evaluation_period,
+        f.mcid,
+        f.bridge_part,
+        f.pathways,
+        f.product_arr_change_ccfx,
+        f.pg_pos_neg_flag,
+        f.currency_code
+      ORDER BY
+        f.flg_1 ASC,              -- prefer flg_1 = 1
+        f.flg_2 ASC,              -- then prefer flg_2 = 1
+        f.arr_change_difference   -- then the smallest difference
+    ) AS dedup_product_side
+  FROM final f
 )
 
---    select * from RankedJoins    ;
-
-    , mid_joiner as (
-        select * from RankedJoins where flg_1 = 1
-        union all
-
-        select * from RankedJoins  rj where rj.flg_2 = 1
-        and not exists (select 1 from  RankedJoins rj2 where flg_1 = 1
-        AND rj2.mcid = rj.mcid
-        and rj2.cb_evaluation_period = rj.cb_evaluation_period
-        and rj2.currency_code = rj.currency_code
-        AND rj2.pathways = rj.pathways
-        AND rj2.product_arr_change_ccfx = rj.product_arr_change_ccfx)
-
-        union all
-        select * from RankedJoins rj
-                 where rj.best_match_rank = 1
-                 and not exists (select
-                                     1
-                                 from RankedJoins rj2
-                                 where (rj2.flg_1 =  1 or rj2.flg_2  =1 )
-                                 and rj2.mcid = rj.mcid
-                                 and rj2.cb_evaluation_period = rj.cb_evaluation_period
-                                 and rj2.currency_code = rj.currency_code
-                                 and rj2.pathways = rj.pathways
-                                 and rj2.product_arr_change_ccfx = rj.product_arr_change_ccfx
-                 )
-
+-- 8) Final output: only rows where rn = 1 (unique per specified keys)
+, finalised_join as (
+SELECT
+  deduped.cb_evaluation_period ,
+  deduped.snapshot_date,
+  deduped.mcid,
+  deduped.customer_bridge,
+  deduped.customer_arr_change_ccfx,
+  deduped.customer_arr_change_lcu,
+  deduped.baseline_currency,
+  deduped.cb_pos_neg_flag,
+  deduped.currency_code,
+  deduped.bridge_part,
+  deduped.migration_part,
+  deduped.pathways,
+  deduped.pg_pos_neg_flag,
+  deduped.product_arr_change_ccfx,
+  deduped.product_arr_change_lcu,
+  deduped.arr_change_difference,
+  deduped.flg_1,
+  deduped.flg_2,
+  deduped.best_match_rank
+FROM deduped
+WHERE
+--     deduped.dedup_customer_side = 1 and
+   deduped.dedup_product_side = 1
+ORDER BY
+  deduped.cb_evaluation_period,
+  deduped.snapshot_date,
+  deduped.mcid,
+  deduped.customer_bridge
 )
 --    select * from mid_joiner;
 
@@ -208,14 +287,14 @@ RankedJoins AS (
         rj.customer_arr_change_ccfx,
         rj.customer_arr_change_lcu
     FROM
-        mid_joiner rj
+        finalised_join rj
 --     WHERE
 --         flg_1 = 1
 --         rj.rn =1
 --         rj.arr_change_difference = rj.min_arr_difference or rj.rn <= 2
 --        (rj.has_close_arr_match = 0 OR LOWER(TRIM(rj.customer_bridge)) = LOWER(TRIM(rj.bridge_part)))
 )
---     select * from joint_part;
+--     select * from joint_part where mcid = '6521c9b4-60e4-e411-9afb-0050568d2da8' and evaluation_period ='2021M12';
 -- ,
 
 
@@ -297,29 +376,7 @@ select
     case when (counting_migration > 1 or counting_migration >= count_movements ) and (counting_migration <> count_movements ) and abs(total_migration_amount_ccfx ) > abs(customer_arr_change_ccfx) then True else False end as double_classification_third_case
 from double_classification_setup as a
 )
--- select * from flagging_table
---     where  mcid = 'd523577f-04bd-e411-9afb-0050568d2da8'
--- and evaluation_period = '2024M09'
--- select
---     evaluation_period,
---     mcid ,
---     pathways ,
---     Migration_classification ,
---     Migration_leftover_classification ,
---     customer_arr_change_ccfx,
---     Migration_rolled_up_amount ,
---     Migration_split_amount ,
---     total_migration_amount_ccfx,
---     counting_migration,
---     count_movements,
---     new_leftover_value_ccfx,
---     substracted_amount_ccfx,
---     double_classification_first_case,
---     double_classification_second_case,
---     double_classification_third_case
---     from flagging_table
---     where mcid = 'd74620b9-768f-dd11-a26e-0018717a8c82'
--- and evaluation_period = '2023M03';
+-- select * from flagging_table ;
 
 SELECT
        evaluation_period,

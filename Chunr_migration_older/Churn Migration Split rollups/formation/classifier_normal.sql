@@ -1271,8 +1271,11 @@ create table   sandbox.churn_migration_classifiers_max_value_v2_int as (
 );
 
 
-
-
+select *
+from
+sandbox.churn_migration_classifiers_max_value_v2_int
+where   mcid = 'f2c843b1-605f-e7b5-71a3-402283550691'
+	and evaluation_period = '2022M02'
 
 drop table if exists sandbox.churn_migration_classifiers_max_value_v2_2;
 create table   sandbox.churn_migration_classifiers_max_value_v2_2 as (

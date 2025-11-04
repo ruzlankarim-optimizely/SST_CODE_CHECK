@@ -4,7 +4,7 @@
 DROP TABLE IF EXISTS sandbox.sst_product_group_bridge_cloud;
 CREATE TABLE sandbox.sst_product_group_bridge_cloud AS
 SELECT *
-FROM ufdm_archive.sst_pb_product_group_cloud_license_lcoked_17042025_2009;
+FROM sandbox_pd.sst_product_bridge_product_group_cloud_license ;
 
 --#############################################
 --CHURN MIGRATION
@@ -929,4 +929,4 @@ select evaluation_period,
   churn_period,
   customer_bridge,
   pathways
-FROM sandbox.temp_arr_table;\
+FROM sandbox.temp_arr_table;

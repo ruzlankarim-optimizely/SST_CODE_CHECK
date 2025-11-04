@@ -1,6 +1,3 @@
-
--- create table ryzlan.sst_product_pathways_bridge_split as select * from ryzlan.sst_product_pathways_bridge_split;
-
 create or replace function ryzlan.sp_populate_sst_product_pathway_split(var_period text) returns void language plpgsql as $$ BEGIN
 DELETE from ryzlan.sst_product_pathways_bridge_split
 where evaluation_period = var_period;
@@ -8,13 +5,13 @@ DROP TABLE IF EXISTS sst_temp;
 CREATE TEMP TABLE sst_temp AS
 SELECT a.*,
     CASE
-    WHEN migration_from is not null THEN migration_from
-    WHEN migration_to is not null THEN migration_to
+    WHEN b."Mig From Name" is not null THEN b."Mig From Name"
+    WHEN b."Mig to Name" is not null THEN b."Mig to Name"
     ELSE 'USUAL'
   END AS pathways
-FROM  sandbox_pd.sst_adhoc_new_tmjs  as a
--- left join ryzlan.tmjs_latest_6 as b
--- on trim(lower(a.sku)) = trim(lower(b.product_code))
+FROM  ufdm_archive.sst_adhoc_lcoked_14072025_1652 as a
+left join sandbox.tmjs_latest_20250717_locked_copy as b
+on trim(lower(a.sku)) = trim(lower(b."Product Code"))
 WHERE snapshot_date = (
     SELECT current_period
     FROM ufdm_grey.periods
@@ -156,10 +153,10 @@ Insert Into ryzlan.sst_product_pathways_bridge_split
 select *
 from arr_product_bridge_tmp;
 END;
-$$
+$$;
 
 
-CREATE OR REPLACE FUNCTION ryzlan.populate_automate()
+CREATE OR REPLACE FUNCTION ryzlan.populate_automate_split()
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
@@ -196,10 +193,4 @@ $function$
 
 
 
-select ryzlan.populate_automate();
-
-select
-prior_pathways ,
-current_pathways
-from ryzlan.sst_product_pathways_bridge_split
-group by 1,2
+select ryzlan.populate_automate_split();

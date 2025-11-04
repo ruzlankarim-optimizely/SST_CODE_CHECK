@@ -1,8 +1,7 @@
 DROP TABLE IF EXISTS sandbox.sst_product_solution_bridge_rollup_cm_cloud;
 CREATE TABLE sandbox.sst_product_solution_bridge_rollup_cm_cloud AS
 SELECT *
-FROM ufdm_archive.sst_pb_product_solution_cloud_license_lcoked_17042025_2009
-
+FROM sandbox_pd.sst_product_bridge_product_solution_cloud_license
 ;
 
 
@@ -80,8 +79,8 @@ select
     split_part("Movement Classification", '--',1) as bridge_path,
     split_part("Movement Classification", '--',2) as migration_pathways
 from sandbox.churn_migration_classifiers_max_value_v2_2_split
--- where mcid = '0a9a1cc5-ddaf-e911-a96a-000d3a4416ab'
--- and evaluation_period = '2024M01'
+-- where mcid = '50661331-d24e-e811-813c-70106fa6f451'
+-- 	and evaluation_period = '2024M04'
 
 )
 , pg_bridge_mod as (
@@ -107,9 +106,9 @@ and lower(trim(a.pathways)) = lower(trim(b.migration_pathways))
 and coalesce(a.current_product_group , a.prior_product_group ) = coalesce(b.current_product_group , b.prior_product_group)
 )
 
---    select * from pg_bridge_mod;
--- where  mcid = '6cb082b5-52a2-dd11-a48c-0018717a8c82'
--- and evaluation_period = '2024M05';
+--    select * from temp_ps_bridge
+--     where mcid = '50661331-d24e-e811-813c-70106fa6f451'
+-- 	and evaluation_period = '2024M04';
 
 
 , initial_table_4 as (
@@ -140,9 +139,10 @@ and ( a.product_bridge ilike '%migration'
        )
 )
 
---    select * from initial_table_4;
---     where  mcid = '6cb082b5-52a2-dd11-a48c-0018717a8c82'
--- and evaluation_period = '2024M05';
+--    select * from initial_table_4
+--    where mcid = '50661331-d24e-e811-813c-70106fa6f451'
+-- 	and evaluation_period = '2024M04';
+
 , initial_table_group as (
     select
         evaluation_period ,

@@ -5,13 +5,13 @@ DROP TABLE IF EXISTS sst_temp;
 CREATE TEMP TABLE sst_temp AS
 SELECT a.*,
     CASE
-    WHEN b.mig_from_name is not null THEN b.mig_from_name
-    WHEN b.mig_to_name is not null THEN b.mig_to_name
+    WHEN b."Mig From Name" is not null THEN b."Mig From Name"
+    WHEN b."Mig to Name" is not null THEN b."Mig to Name"
     ELSE 'USUAL'
   END AS pathways
-FROM  ufdm_archive.sst_adhoc_lcoked_17042025_2009  as a
-left join ryzlan.tmjs_latest_6 as b
-on trim(lower(a.sku)) = trim(lower(b.product_code))
+FROM  ufdm_archive.sst_adhoc_lcoked_14072025_1652 as a
+left join sandbox.tmjs_latest_20250717_locked_copy as b
+on trim(lower(a.sku)) = trim(lower(b."Product Code"))
 WHERE snapshot_date = (
     SELECT current_period
     FROM ufdm_grey.periods
@@ -153,4 +153,44 @@ Insert Into ryzlan.sst_product_pathways_bridge_old
 select *
 from arr_product_bridge_tmp;
 END;
-$$
+$$;
+
+
+CREATE OR REPLACE FUNCTION ryzlan.populate_automate_old()
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+DECLARE evaluation_period_input text;
+BEGIN
+    drop table if exists temp_snapshots;
+
+    create temporary  table temp_snapshots as
+    select  evaluation_period
+    from ufdm_grey.periods
+    where evaluation_period ilike '%M%' and evaluation_period not like '%W%'
+      and current_period < current_date
+    ORDER BY current_period ;
+
+    while exists(select 1 from temp_snapshots) loop
+
+            select evaluation_period
+            into evaluation_period_input
+            from temp_snapshots
+            order by 1 asc
+            limit 1;
+
+            PERFORM ryzlan.sp_populate_sst_product_pathway2(evaluation_period_input);
+
+
+            delete from temp_snapshots
+            where evaluation_period = evaluation_period_input
+            ;
+
+        end loop;
+END;
+$function$
+;
+
+
+
+select ryzlan.populate_automate_old();

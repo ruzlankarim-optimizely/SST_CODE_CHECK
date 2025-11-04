@@ -1,16 +1,7 @@
--- New script in dw-prod-rds-master.cr9dekxonyuj.us-east-1.rds.amaz.
--- Date: Jun 27, 2024
--- Time: 3:46:59 PM
--- select * from sandbox.churn_migration_classifiers_max_value_v2_2
---          where "Movement Classification" is not null ;
---
---          limit 1 ;
-
--- create table sandbox.sst_product_group_bridge_older as select * from sandbox.sst_product_group_bridge;
 DROP TABLE IF EXISTS sandbox.sst_product_group_bridge;
 CREATE TABLE sandbox.sst_product_group_bridge AS
 SELECT *
-FROM ufdm_archive.sst_product_bridge_product_group_lcoked_17042025_2009
+FROM sandbox_pd.sst_product_bridge_product_group
 ;
 
 Drop table if exists churn_migration_classifiers_pg;

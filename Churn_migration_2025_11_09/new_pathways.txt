@@ -1,0 +1,181 @@
+Migration From	                      ------  Migration To
+Commerce Connect LI                   ------	Monetize or Content Management (CMS)
+Commerce Connect M&S                  ------	Monetize or Content Management (CMS)
+Configured Commerce LI                ------	Monetize or Content Management (CMS)
+Configured Commerce M&S               ------	Monetize or Content Management (CMS)
+Content Management PaaS LI            ------	Monetize or Content Management (CMS)
+Content Management PaaS M&S           ------	Monetize or Content Management (CMS)
+EOL - Everweb                         ------	Monetize or Content Management (CMS)
+EOL - Legacy Visitor Intelligence	    ------  ODP
+Legacy Ektron                         ------	Monetize or Content Management (CMS)
+Legacy Ektron M&S	                    ------  Monetize or Content Management (CMS)
+Search & Navigatio n - Standalone     ------ 	Monetize or Content Management (CMS)
+Search & Navigation - Standalone M&S  ------	Monetize or Content Management (CMS)
+
+
+NEW PATHWAYS -- 2 
+Migration From	                      ------  Migration To			
+Commerce Connect LI                   ------	Content Supply Chain or Other			
+Commerce Connect M&S                  ------	Content Supply Chain or Other
+*Commerce Connect Subscription         ------  Content Supply Chain or Other		
+Configured Commerce LI                ------	Content Supply Chain or Other			
+Configured Commerce M&S               ------	Content Supply Chain or Other			
+*Configured Commerce Subscription      ------	Content Supply Chain or Other			
+Content Management PaaS LI            ------	Content Supply Chain or Other			
+Content Management PaaS M&S           ------	Content Supply Chain or Other
+*Content Management PaaS Subscription ------ Content Supply Chain or Other 			
+EOL - Everweb                         ------	Content Supply Chain or Other			
+EOL - Community API                   ------	Content Supply Chain or Other			
+EOL - Legacy Visitor Intelligence	    ------  Segmentation			
+Legacy Ektron                         ------	Content Supply Chain or Other			
+Legacy Ektron M&S	                    ------    Content Supply Chain or Other			
+Search & Navigation - Standalone      ------  Content Supply Chain or Other			
+Search & Navigation - Standalone M&S  ------ Content Supply Chain or Other
+*Search & Navigation - Standalone Subscription ----  Content Supply Chain or Other
+ 
+
+MIGRATION FROM        ----- MIGRATION TO 
+Licenses              ----- Orchestrate / Monetize / CMP /CMS
+Everweb               ----- Orchestrate / Monetize / CMP /CMS
+Ektron                ----- Content management system (CMS)
+Find                  ----- Orchestrate / Monetize / CMP /CMS
+Visitor Intelligence  ----- Data Platfrom (ODP)
+
+
+Line of Business (LOB) = ‘Licenses’ > Line of Business (LOB) = ‘Cloud’  & Solution Li = Content Supply Chain or Other
+- Product = ‘Everweb’ > Prod Solution Li = Content Supply Chain or Other
+- Product = ‘Ektron’ > Product Solution Li = Content Supply Chain
+- Product =’Find’ > Prod Solution Li = Content Supply Chain or Other
+- Product =’Visitor Intelligence’ > Product Group LI = Segmentation
+
+
+-- tables 
+-- max numbers approach 
+ufdm_grey.product hierarchy mappings
+ufdm_archive.sst_adhoc_lcoked_17042025_2009;
+ufdm_archive.churn_migration_classifiers_lcoked_17042025_2009
+ufdm_archive.sst_product_pathways_bridge_lcoked_17042025_2009
+ 
+ufdm_archive.sst_customer_bridge_lcoked_17042025_2009;
+ufdm_archive.sst_customer_bridge_churn_mig_lcoked_17042025_2009;
+
+ufdm_archive.sst_product_bridge_product_group_lcoked_17042025_2009
+ufdm_archive.sst_product_group_churn_mig_lcoked_17042025_2009
+
+ufdm_archive.sst_pb_product_group_cloud_license_lcoked_17042025_2009
+ufdm_archive.sst_product_group_cloud_churn_mig_lcoked_17042025_2009
+
+ufdm_archive.sst_pb_product_solution_cloud_license_lcoked_17042025_2009
+ufdm_archive.sst_product_solution_cloud_churn_mig_lcoked_17042025_2009
+
+---   
+
+ufdm_archive.sst_adhoc_lcoked_14072025_1652
+sandbox_pd.sst_product_bridge_product_group_temp
+sandbox_pd.sst_product_bridge_product_group_cloud_license_temp
+sandbox_pd.sst_product_bridge_product_solution_cloud_license_temp
+sandbox_pd.sst_customer_bridge_temp
+
+
+ufdm_archive.sst_adhoc_lcoked_14072025_1652
+ufdm_archive.sst_customer_bridge_lcoked_14072025_1652
+
+ufdm_archive.sst_product_bridge_product_group_lcoked_14072025_1652
+ufdm_archive.sst_pb_product_group_cloud_license_lcoked_14072025_1652
+ufdm_archive.sst_pb_product_solution_cloud_license_lcoked_14072025_1652
+
+--- 
+Solution Split - 
+  sandbox_tmjs.sst_product_bridge_product_solution_cloud_license_temp
+Group Split - 
+  sandbox_tmjs.sst_product_bridge_product_group_cloud_license_temp
+Group - 
+  sandbox_tmjs.sst_product_bridge_product_group_mig
+SST - 
+  sandbox_tmjs.sst_adhoc
+
+SST - sandbox_tmjs.sst_adhoc
+Product Solution Split - sandbox_tmjs.sst_product_bridge_product_solution_cloud_license_temp
+Product Group Split - sandbox_tmjs.sst_product_bridge_product_group_cloud_license_temp
+Product Group - sandbox_tmjs.sst_product_bridge_product_group_temp
+Customer Total - sandbox_tmjs.sst_customer_bridge_total_temp
+Customer Software - sandbox_tmjs.sst_customer_bridge_software_temp
+Customer EOL - sandbox_tmjs.sst_customer_bridge_eol_temp
+---Customer Services - sandbox_tmjs.sst_customer_bridge_services_temp
+Customer Core - sandbox_tmjs.sst_customer_bridge_core_temp
+Customer Non AI Core - sandbox_tmjs.sst_customer_bridge_non_ai_core_temp
+Customer Non Core - sandbox_tmjs.sst_customer_bridge_non_core_temp
+---Customer AI - sandbox_tmjs.sst_customer_bridge_ai_temp
+Customer Non AI - sandbox_tmjs.sst_customer_bridge_non_ai_temp
+
+
+WHEN non_ai_core_bridge = 1 AND COALESCE(temp_product_solution_li,'') IN ('Content Supply Chain', 'Experimentation & Personalization (E&P)') THEN 1
+WHEN non_core_bridge = 1 AND COALESCE(temp_product_solution_li,'') IN ('EOL', 'Other', 'License') THEN 1
+WHEN ai_bridge = 1 AND COALESCE(temp_product_solution_li,'') = 'AI' THEN 1
+WHEN non_ai_bridge = 1 AND COALESCE(temp_product_solution_li,'') IN ('Content Supply Chain', 'Experimentation & Personalization (E&P)', 'EOL', 'Other', 'License') THEN 1
+WHEN core_bridge = 1 AND COALESCE(temp_product_solution_li,'') IN ('AI', 'Content Supply Chain', 'Experimentation & Personalization (E&P)') THEN 1
+WHEN total_bridge = 1 THEN 1
+WHEN software_bridge = 1 AND COALESCE(temp_product_solution_li,'') <> 'Services' THEN 1
+WHEN eol_bridge = 1 AND COALESCE(temp_product_solution_li,'') <> 'EOL' AND COALESCE(temp_product_solution_li,'') <> 'Services' THEN 1
+WHEN services_bridge = 1 AND COALESCE(temp_product_solution_li,'') = 'Services' THEN 1
+
+
+
+
+downgraded_commerce_connect_subs_in_current_date
+downgraded_content_mgmt_paas_subs_in_current_date
+downgraded_search_nav_subs_in_current_date
+
+churned_commerce_connect_subs_in_current_date
+churned_content_mgmt_paas_subs_in_current_date
+churned_search_nav_subs_in_current_date
+
+commerce_connect_subs_in_previous_date_with_arr
+content_mgmt_paas_subs_in_previous_date_with_arr
+search_nav_subs_in_previous_date_with_arr
+
+sum_downgraded_commerce_connect_subs_in_current_date
+sum_downgraded_content_mgmt_paas_subs_in_current_date
+sum_downgraded_search_nav_subs_in_current_date
+
+sum_churned_commerce_connect_subs_in_current_date
+sum_churned_content_mgmt_paas_subs_in_current_date
+sum_churned_search_nav_subs_in_current_date
+
+sum_commerce_connect_subs_in_previous_date_with_arr
+sum_content_mgmt_paas_subs_in_previous_date_with_arr
+sum_search_nav_subs_in_previous_date_with_arr
+
+downgrade_migration_commerce_connect_subs_to_other
+downgrade_migration_content_mgmt_paas_subs_to_other
+downgrade_migration_search_nav_subs_to_other
+
+downgrade_migration_commerce_connect_subs_to_content_supply_chain
+downgrade_migration_content_mgmt_paas_subs_to_content_supply_chain
+downgrade_migration_search_nav_subs_to_content_supply_chain
+
+downsell_migration_commerce_connect_subs_to_other
+downsell_migration_content_mgmt_paas_subs_to_other
+downsell_migration_search_nav_subs_to_other
+
+downsell_migration_commerce_connect_subs_to_content_supply_chain
+downsell_migration_content_mgmt_paas_subs_to_content_supply_chain
+downsell_migration_search_nav_subs_to_content_supply_chain
+
+cross_sell_migration_commerce_connect_subs_to_other
+cross_sell_migration_content_mgmt_paas_subs_to_other
+cross_sell_migration_search_nav_subs_to_other
+
+cross_sell_migration_commerce_connect_subs_to_content_supply_chain
+cross_sell_migration_content_mgmt_paas_subs_to_content_supply_chain
+cross_sell_migration_search_nav_subs_to_content_supply_chain
+
+upsell_migration_commerce_connect_subs_to_other
+upsell_migration_content_mgmt_paas_subs_to_other
+upsell_migration_search_nav_subs_to_other
+
+upsell_migration_commerce_connect_subs_to_content_supply_chain
+upsell_migration_content_mgmt_paas_subs_to_content_supply_chain
+upsell_migration_search_nav_subs_to_content_supply_chain
+
+

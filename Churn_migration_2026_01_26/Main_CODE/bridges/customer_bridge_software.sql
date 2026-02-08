@@ -1,7 +1,7 @@
-DROP TABLE IF EXISTS sandbox.sst_customer_bridge_rollover_cm;
-CREATE TABLE sandbox.sst_customer_bridge_rollover_cm AS
+DROP TABLE IF EXISTS sandbox.sst_customer_bridge_software_mig;
+CREATE TABLE sandbox.sst_customer_bridge_software_mig AS
 SELECT *
-FROM sandbox_tmjs.sst_customer_bridge_non_ai_temp
+FROM ufdm_archive.sst_customer_bridge_software_temp_lcoked_20260204_1855
 --     sandbox_pd.sst_customer_bridge
     scb;
 
@@ -26,6 +26,8 @@ with    base_product_group AS (
       ELSE 'flat'
     END AS pos_neg_flag
   FROM sandbox.sst_product_solution_bridge_rollup_cm_cloud
+    where current_product_solution  not in ('Services')
+    or prior_product_solution not in ('Services')
 ),
 
 pg_sub_part AS (
@@ -85,7 +87,7 @@ cb_part AS (
       WHEN customer_arr_change_ccfx < 0 THEN '-'
       ELSE 'flat'
     END AS pos_neg_flag
-  FROM sandbox_tmjs.sst_customer_bridge_non_ai_temp
+  FROM ufdm_archive.sst_customer_bridge_software_temp_lcoked_20260204_1855
   WHERE customer_bridge IN ('Up Sell', 'Cross-sell', 'Downsell', 'Downgrade')
 ),
 
@@ -424,7 +426,7 @@ create table sandbox.customer_churn_migration_default_cases as
         b.migration_split_amount_lcu,
         b.migration_classification ,
         b.migration_leftover_classification
-    from sandbox.sst_customer_bridge_rollover_cm    as a
+    from sandbox.sst_customer_bridge_software_mig  as a
     join sandbox.customer_product_migration_joiner  as b
     on a.mcid = b.mcid
     and a.evaluation_period = b.evaluation_period
@@ -446,7 +448,7 @@ create table sandbox.customer_churn_migration_split_cases as
         b.migration_split_amount_lcu,
         b.migration_classification ,
         b.migration_leftover_classification
-    from sandbox.sst_customer_bridge_rollover_cm    as a
+    from sandbox.sst_customer_bridge_software_mig  as a
     join sandbox.customer_product_migration_joiner  as b
     on a.mcid = b.mcid
     and a.evaluation_period = b.evaluation_period
@@ -460,7 +462,7 @@ create table sandbox.customer_churn_migration_split_cases as
 
 -- Deleting default cases from main table
 
-Delete from sandbox.sst_customer_bridge_rollover_cm as a
+Delete from sandbox.sst_customer_bridge_software_mig as a 
 Using sandbox.customer_churn_migration_default_cases as b
 where a.mcid = b.mcid
 and a.evaluation_period = b.evaluation_period
@@ -469,7 +471,7 @@ and lower(trim(a.customer_bridge)) = lower(trim(b.customer_bridge));
 
 --Inserting default cases with new Classification and pathawys
 
-Insert into sandbox.sst_customer_bridge_rollover_cm as a (
+Insert into sandbox.sst_customer_bridge_software_mig as a  (
 evaluation_period,
     prior_period,
     current_period,
@@ -538,7 +540,7 @@ and customer_bridge = b.customer_bridge;
 
 
 
-Delete from sandbox.sst_customer_bridge_rollover_cm as a
+Delete from sandbox.sst_customer_bridge_software_mig as a 
 Using sandbox.customer_churn_migration_split_cases as b
 where a.mcid = b.mcid
 and a.evaluation_period = b.evaluation_period
@@ -547,7 +549,7 @@ and lower(trim(a.customer_bridge)) = lower(trim(b.customer_bridge));
 
 
 
-Insert into sandbox.sst_customer_bridge_rollover_cm as a (
+Insert into sandbox.sst_customer_bridge_software_mig as a  (
 evaluation_period,
     prior_period,
     current_period,
@@ -616,7 +618,7 @@ and customer_bridge = b.customer_bridge;
 
 
 
-Insert into sandbox.sst_customer_bridge_rollover_cm as a (
+Insert into sandbox.sst_customer_bridge_software_mig as a  (
 evaluation_period,
     prior_period,
     current_period,
@@ -705,7 +707,7 @@ SELECT evaluation_period,
   sum(current_period_customer_lcu) AS current_period_customer_lcu,
   sum(prior_period_customer_arr_lcu) AS prior_period_customer_arr_lcu,
   sum(customer_arr_change_lcu) AS customer_arr_change_lcu
-FROM sandbox.sst_customer_bridge_rollover_cm
+FROM sandbox.sst_customer_bridge_software_mig
 GROUP BY 1,
   2,
   3,
@@ -719,8 +721,8 @@ GROUP BY 1,
   11,
   12,
   13;
-TRUNCATE TABLE sandbox.sst_customer_bridge_rollover_cm;
-INSERT INTO sandbox.sst_customer_bridge_rollover_cm(
+TRUNCATE TABLE sandbox.sst_customer_bridge_software_mig;
+INSERT INTO sandbox.sst_customer_bridge_software_mig ( 
     evaluation_period,
     prior_period,
     current_period,

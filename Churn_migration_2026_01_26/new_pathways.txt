@@ -1,0 +1,59 @@
+NEW PATHWAYS -- 2 
+Migration From                      ------  Migration To   
+Commerce Connect LI                 ------ Experience Creation or Other   
+Commerce Connect M&S                ------ Experience Creation or Other
+Commerce Connect Subscription       ------ Experience Creation or Other  
+Configured Commerce LI              ------ Experience Creation or Other   
+Configured Commerce M&S             ------ Experience Creation or Other   
+Configured Commerce Subscription    ------ Experience Creation or Other   
+Content Management PaaS LI          ------ Experience Creation or Other   
+Content Management PaaS M&S         ------ Experience Creation or Other
+Content Management PaaS Subscription------ Experience Creation or Other    
+EOL - Everweb                       ------ Experience Creation or Other   
+EOL - Community API                 ------ Experience Creation or Other   
+EOL - Legacy Visitor Intelligence   ------ Segmentation   
+EOL - Legacy Ektron                 ------ Experience Creation or Other   
+Search & Navigation - Standalone    ------ Experience Creation or Other
+ 
+
+Migration Pathway include:
+-- Line of Business (LOB) = ‘Licenses’ > Line of Business (LOB) = ‘Cloud’ & Product Solution = Experience Creation or Other
+-- Product Group = ‘EOL - Everweb’ > Product Solution = Experience Creation or Other
+-- Product Group = ‘EOL - Community API’ > Product Solution = Experience Creation or Other
+-- Product Group =’EOL - Legacy Visitor Intelligence’ > Product Group = ‘Segmentation’
+-- Product Group = ‘EOL- Legacy Ektron’ > Product Solution = Experience Creation or Other
+-- Product Group =’Search & Navigation Standalone’ > Product Solution = Experience Creation or Other
+
+-- tables 
+ryzlan.sst_adhoc
+ufdm_archive.sst_pb_pg_temp_lcoked_20260204_1855 							
+ufdm_archive.sst_pb_pg_cloud_license_temp_lcoked_20260204_1855 			
+ufdm_archive.sst_pb_ps_cloud_license_temp_lcoked_20260204_1855 	
+ufdm_archive.sst_customer_bridge_non_ai_core_temp_lcoked_20260204_1855 
+ufdm_archive.sst_customer_bridge_non_core_temp_lcoked_20260204_1855 
+ufdm_archive.sst_customer_bridge_ai_temp_lcoked_20260204_1855 
+ufdm_archive.sst_customer_bridge_non_ai_temp_lcoked_20260204_1855 
+ufdm_archive.sst_customer_bridge_core_temp_lcoked_20260204_1855 
+ufdm_archive.sst_customer_bridge_total_temp_lcoked_20260204_1855 
+ufdm_archive.sst_customer_bridge_software_temp_lcoked_20260204_1855 
+ufdm_archive.sst_customer_bridge_eol_temp_lcoked_20260204_1855 
+ufdm_archive.sst_customer_bridge_services_temp_lcoked_20260204_1855 
+
+
+
+WHEN non_ai_core_bridge = 1 AND COALESCE(temp_product_solution_li,'') IN ('Experience Creation', 'Experience Optimization') THEN 1
+WHEN non_core_bridge = 1 AND COALESCE(temp_product_solution_li,'') IN ('EOL', 'Other', 'License') THEN 1
+WHEN ai_bridge = 1 AND COALESCE(temp_product_solution_li,'') = 'AI' THEN 1
+WHEN non_ai_bridge = 1 AND COALESCE(temp_product_solution_li,'') IN ('Experience Creation', 'Experience Optimization', 'EOL', 'Other', 'License') THEN 1
+WHEN core_bridge = 1 AND COALESCE(temp_product_solution_li,'') IN ('AI', 'Experience Creation', 'Experience Optimization') THEN 1
+WHEN total_bridge = 1 THEN 1
+WHEN software_bridge = 1 AND COALESCE(temp_product_solution_li,'') <> 'Services' THEN 1
+WHEN eol_bridge = 1 AND COALESCE(temp_product_solution_li,'') <> 'EOL' AND COALESCE(temp_product_solution_li,'') <> 'Services' THEN 1
+WHEN services_bridge = 1 AND COALESCE(temp_product_solution_li,'') = 'Services' THEN 1
+
+
+
+
+
+
+
